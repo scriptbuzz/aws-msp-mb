@@ -1,0 +1,26 @@
+# PLACEHOLDER buildspec — structure only, no real commands yet.
+version: 0.2
+
+phases:
+  install:
+    commands:
+      - echo "TODO: install Docker/Terraform/test tooling"
+  pre_build:
+    commands:
+      - echo "TODO: ECR login; derive image tag from app/VERSION + commit"
+  build:
+    commands:
+      - echo "TODO: build container image (nginx + app/ static files)"
+      - echo "TODO: run unit + integration tests"
+  security_scan:
+    commands:
+      # Reserved extension point — DEFERRED (design §8a). No-op for now.
+      - echo "security-scan hook reserved; no scanners wired (pass-through)"
+  post_build:
+    commands:
+      - echo "TODO: push image to ECR by immutable digest"
+      - echo "TODO: write imageDetail / artifact for downstream stages"
+
+artifacts:
+  files:
+    - "**/*"

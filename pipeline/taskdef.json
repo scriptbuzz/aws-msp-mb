@@ -1,0 +1,18 @@
+{
+  "_comment": "PLACEHOLDER ECS task definition — structure only. <IMAGE> filled at deploy time.",
+  "family": "mb-use1-app",
+  "requiresCompatibilities": ["FARGATE"],
+  "networkMode": "awsvpc",
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "<TASK_EXECUTION_ROLE_ARN>",
+  "taskRoleArn": "<TASK_ROLE_ARN>",
+  "containerDefinitions": [
+    {
+      "name": "app",
+      "image": "<IMAGE>",
+      "essential": true,
+      "portMappings": [{ "containerPort": 80, "protocol": "tcp" }]
+    }
+  ]
+}

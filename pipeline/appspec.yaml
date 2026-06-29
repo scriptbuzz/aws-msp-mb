@@ -1,0 +1,12 @@
+# PLACEHOLDER appspec — CodeDeploy ECS blue/green (prod). Structure only.
+version: 0.0
+Resources:
+  - TargetService:
+      Type: AWS::ECS::Service
+      Properties:
+        TaskDefinition: "<TASK_DEFINITION>"   # filled at deploy time
+        LoadBalancerInfo:
+          ContainerName: "app"
+          ContainerPort: 80
+# Hooks (TODO): BeforeInstall / AfterInstall / AfterAllowTestTraffic /
+# BeforeAllowTraffic / AfterAllowTraffic — validation + gating during the shift.

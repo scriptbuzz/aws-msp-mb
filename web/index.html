@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AWS MSP — Release Management Pipeline (Interactive)</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --panel: #161b22;
+    --panel-2: #1c2430;
+    --border: #30363d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --blue: #1f6feb;
+    --amber: #d29922;
+    --red: #f85149;
+    --purple: #bc8cff;
+    --shadow: 0 8px 24px rgba(0,0,0,.4);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.55;
+  }
+  header {
+    padding: 32px 24px 24px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, #11161d, var(--bg));
+  }
+  header h1 { margin: 0 0 6px; font-size: 24px; }
+  header p { margin: 0; color: var(--muted); font-size: 14px; }
+  .badge {
+    display: inline-block; font-size: 11px; text-transform: uppercase;
+    letter-spacing: .06em; padding: 3px 8px; border-radius: 999px;
+    border: 1px solid var(--border); color: var(--muted); margin-left: 8px;
+  }
+  main { max-width: 1100px; margin: 0 auto; padding: 28px 24px 64px; }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 8px; margin-bottom: 22px; }
+  .tab {
+    font-size: 13px; padding: 9px 16px; border-radius: 8px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--panel); color: var(--muted);
+    transition: border-color .12s, color .12s, background .12s;
+  }
+  .tab:hover { border-color: var(--accent); color: var(--text); }
+  .tab.active { border-color: var(--accent); color: var(--text); background: var(--panel-2); }
+
+  /* Architecture */
+  .arch-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); padding: 10px; }
+  .arch-svg { width: 100%; min-width: 880px; height: auto; display: block; }
+  .arch-svg .box { fill: var(--panel-2); stroke: var(--border); stroke-width: 1.2; }
+  .arch-svg g.node { cursor: default; }
+  .arch-svg g.node:hover .box { stroke: var(--accent); }
+  .arch-svg .t { fill: var(--text); font: 600 12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  .arch-svg .s { fill: var(--muted); font: 400 10px -apple-system, sans-serif; }
+  .arch-svg .pipe { fill: #1c2430; stroke: var(--accent); stroke-width: 1.6; }
+  .arch-svg .gate { stroke: var(--amber); stroke-dasharray: 5 4; }
+  .arch-svg .prod { stroke: var(--green); }
+  .arch-svg .blueb { stroke: var(--blue); }
+  .arch-svg .greenb { stroke: var(--green); }
+  .arch-svg .zone { fill: none; stroke: var(--border); stroke-dasharray: 6 6; }
+  .arch-svg .zlabel { fill: var(--muted); font: 400 11px monospace; }
+  .arch-legend { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 14px; font-size: 12px; color: var(--muted); }
+  .arch-legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .arch-legend i { width: 14px; height: 14px; border-radius: 4px; display: inline-block; border: 1.5px solid; }
+
+  /* Pipeline flow */
+  .flow {
+    display: flex; align-items: stretch; gap: 0; flex-wrap: wrap;
+    margin: 8px 0 28px;
+  }
+  .stage {
+    flex: 1 1 120px; min-width: 120px; position: relative; cursor: pointer;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 12px; text-align: center;
+    transition: transform .12s ease, border-color .12s ease, background .12s ease;
+    margin: 4px;
+  }
+  .stage:hover { transform: translateY(-3px); border-color: var(--accent); }
+  .stage.active { border-color: var(--accent); background: var(--panel-2); box-shadow: var(--shadow); }
+  .stage .ico { font-size: 22px; }
+  .stage .name { font-weight: 600; font-size: 13px; margin-top: 6px; }
+  .stage .svc { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .stage .arrow {
+    position: absolute; right: -13px; top: 50%; transform: translateY(-50%);
+    color: var(--border); font-size: 18px; z-index: 2;
+  }
+  .stage.gate { border-style: dashed; border-color: var(--amber); }
+  .stage.prod { border-color: var(--green); }
+
+  /* Detail panel */
+  .detail {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 12px; padding: 0; overflow: hidden; min-height: 220px;
+  }
+  .detail-head {
+    display: flex; align-items: center; gap: 12px;
+    padding: 16px 20px; border-bottom: 1px solid var(--border);
+    background: var(--panel-2);
+  }
+  .detail-head .ico { font-size: 26px; }
+  .detail-head h2 { margin: 0; font-size: 18px; }
+  .detail-head .sub { color: var(--muted); font-size: 13px; }
+  .detail-body { padding: 18px 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .detail-body h3 {
+    font-size: 12px; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--accent); margin: 0 0 8px;
+  }
+  .detail-body ul { margin: 0 0 16px; padding-left: 18px; }
+  .detail-body li { font-size: 14px; margin-bottom: 4px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    font-size: 12px; padding: 3px 9px; border-radius: 999px;
+    border: 1px solid var(--border); background: #0d1117; color: var(--text);
+  }
+  .chip.free { border-color: var(--green); color: var(--green); }
+  .chip.paid { border-color: var(--amber); color: var(--amber); }
+  .chip.later { border-color: var(--muted); color: var(--muted); border-style: dashed; }
+  .msp {
+    grid-column: 1 / -1; border-top: 1px dashed var(--border); padding-top: 14px;
+  }
+  .msp .tag {
+    display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 6px;
+    background: rgba(63,185,80,.12); color: var(--green); border: 1px solid rgba(63,185,80,.3);
+    margin-right: 6px;
+  }
+
+  /* Blue/green visual */
+  .bg-section { margin-top: 36px; }
+  .bg-section h2 { font-size: 18px; }
+  .bg-stage {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 12px; padding: 22px; margin-top: 12px;
+  }
+  .alb {
+    text-align: center; padding: 10px; border: 1px solid var(--accent);
+    border-radius: 8px; width: 200px; margin: 0 auto 6px; background: var(--panel-2);
+    font-size: 13px;
+  }
+  .split { text-align:center; color: var(--muted); font-size: 20px; margin: 2px 0; }
+  .tgs { display: flex; gap: 24px; justify-content: center; margin-top: 8px; }
+  .tg { flex: 1; max-width: 260px; }
+  .tg-bar {
+    height: 10px; border-radius: 999px; background: #0d1117;
+    border: 1px solid var(--border); overflow: hidden; margin-bottom: 8px;
+  }
+  .tg-fill { height: 100%; width: 100%; transition: width .6s ease; }
+  .tg.blue .tg-fill { background: var(--blue); }
+  .tg.green .tg-fill { background: var(--green); width: 0%; }
+  .taskset {
+    border: 1px solid var(--border); border-radius: 8px; padding: 12px;
+    text-align: center; font-size: 13px; background: var(--panel-2);
+  }
+  .tg.blue .taskset { border-color: var(--blue); }
+  .tg.green .taskset { border-color: var(--green); opacity: .45; transition: opacity .6s ease; }
+  .tg.green.up .taskset { opacity: 1; }
+  .tg-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; text-align:center; }
+  .pct { font-weight: 700; }
+  .controls { display: flex; gap: 10px; justify-content: center; margin-top: 20px; flex-wrap: wrap; }
+  button {
+    font-size: 13px; padding: 9px 16px; border-radius: 8px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--panel-2); color: var(--text);
+    transition: border-color .12s, background .12s;
+  }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button.primary { border-color: var(--green); color: var(--green); }
+  button.danger { border-color: var(--red); color: var(--red); }
+  .status {
+    text-align: center; margin-top: 16px; font-size: 14px; min-height: 22px;
+    color: var(--muted);
+  }
+  .status.ok { color: var(--green); }
+  .status.warn { color: var(--amber); }
+  .status.err { color: var(--red); }
+
+  footer { color: var(--muted); font-size: 12px; text-align: center; padding: 24px; border-top: 1px solid var(--border); }
+  a { color: var(--accent); }
+  @media (max-width: 720px) {
+    .detail-body { grid-template-columns: 1fr; }
+    .stage .arrow { display: none; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>AWS MSP — Release Management Pipeline (draft) <span class="badge">Interactive</span></h1>
+  <p>Click any stage to see what happens, the AWS constructs involved, the tooling, and which MSP requirement it satisfies. Then try the blue/green prod deploy at the bottom.</p>
+</header>
+
+<main>
+  <div class="tabs">
+    <button class="tab active" data-view="pipeline">▦ Pipeline Walkthrough</button>
+    <button class="tab" data-view="arch">🗺 Architecture Diagram</button>
+  </div>
+
+  <div id="view-pipeline">
+  <div class="flow" id="flow"></div>
+  <div class="detail" id="detail"></div>
+
+  <section class="bg-section">
+    <h2>Production deploy — CodeDeploy blue/green (try it)</h2>
+    <p style="color:var(--muted);font-size:14px;margin-top:4px">
+      A new (green) task set is launched alongside live (blue). Traffic shifts gradually.
+      Health checks watch green — if they fail, CodeDeploy rolls back automatically. No human action.
+    </p>
+    <div class="bg-stage">
+      <div class="alb">Application Load Balancer<br><span style="color:var(--muted);font-size:11px">prod listener</span></div>
+      <div class="split">┴</div>
+      <div class="tgs">
+        <div class="tg blue" id="tgBlue">
+          <div class="tg-label">BLUE target group — <span class="pct" id="bluePct">100%</span></div>
+          <div class="tg-bar"><div class="tg-fill"></div></div>
+          <div class="taskset">BLUE task set<br><span style="color:var(--muted);font-size:11px">current version (live)</span></div>
+        </div>
+        <div class="tg green" id="tgGreen">
+          <div class="tg-label">GREEN target group — <span class="pct" id="greenPct">0%</span></div>
+          <div class="tg-bar"><div class="tg-fill"></div></div>
+          <div class="taskset">GREEN task set<br><span style="color:var(--muted);font-size:11px">new version</span></div>
+        </div>
+      </div>
+      <div class="controls">
+        <button class="primary" id="btnDeploy">▶ Start blue/green deploy</button>
+        <button id="btnHealthy" disabled>Green is healthy → continue shift</button>
+        <button class="danger" id="btnFail" disabled>✕ Simulate health-check failure</button>
+        <button id="btnReset">↺ Reset</button>
+      </div>
+      <div class="status" id="bgStatus">Idle — blue serving 100% of production traffic.</div>
+    </div>
+  </section>
+  </div>
+
+  <div id="view-arch" hidden>
+    <p style="color:var(--muted);font-size:14px;margin:0 0 14px">
+      End-to-end architecture. Everything inside the dashed boundary is provisioned by Terraform
+      (region <code>us-east-1</code>, prefix <code>mb-</code>). GitHub is external; the OAuth connection is managed via CodeConnections.
+    </p>
+    <div class="arch-wrap">
+      <svg viewBox="0 0 980 710" xmlns="http://www.w3.org/2000/svg" class="arch-svg" role="img" aria-label="AWS MSP release management architecture diagram">
+        <defs>
+          <marker id="arr" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+            <path d="M0,0 L7,3 L0,6 Z" fill="#8b949e"/>
+          </marker>
+        </defs>
+
+        <!-- AWS / Terraform boundary -->
+        <rect class="zone" x="12" y="200" width="956" height="500" rx="14"/>
+        <text class="zlabel" x="26" y="220">AWS — provisioned by Terraform · us-east-1 · prefix mb-</text>
+
+        <!-- Developer + GitHub (external, above the boundary) -->
+        <g class="node"><rect class="box" x="40" y="34" width="120" height="44" rx="8"/>
+          <text class="t" x="100" y="61" text-anchor="middle">👩‍💻 Developer</text></g>
+        <line x1="100" y1="78" x2="100" y2="114" stroke="#8b949e" stroke-width="1.5" marker-end="url(#arr)"/>
+        <g class="node"><rect class="box" x="40" y="114" width="120" height="58" rx="8"/>
+          <text class="t" x="100" y="138" text-anchor="middle">🌿 GitHub</text>
+          <text class="s" x="100" y="155" text-anchor="middle">app + IaC · PR gates</text></g>
+
+        <!-- GitHub -> Source (inside Pipeline) via CodeConnections -->
+        <line x1="100" y1="172" x2="96" y2="256" stroke="#8b949e" stroke-width="1.5" marker-end="url(#arr)"/>
+        <text class="s" x="112" y="192">via CodeConnections</text>
+
+        <!-- CodePipeline BAND: wraps every stage it controls -->
+        <rect class="pipe" x="24" y="226" width="932" height="104" rx="12" fill="#161f2e"/>
+        <text x="40" y="248" fill="#58a6ff" font-family="-apple-system, sans-serif" font-size="13" font-weight="700">⚙️ AWS CodePipeline — orchestrates every stage below</text>
+
+        <!-- Stage chips inside the band -->
+        <g class="node"><rect class="box" x="38" y="258" width="116" height="56" rx="8"/>
+          <text class="t" x="96" y="284" text-anchor="middle" font-size="15">🌿</text>
+          <text class="t" x="96" y="302" text-anchor="middle" font-size="11">Source</text></g>
+        <line x1="154" y1="286" x2="167" y2="286" stroke="#8b949e" stroke-width="1.5" marker-end="url(#arr)"/>
+
+        <g class="node"><rect class="box" x="169" y="258" width="116" height="56" rx="8"/>
+          <text class="t" x="227" y="284" text-anchor="middle" font-size="15">🔨</text>
+          <text class="t" x="227" y="302" text-anchor="middle" font-size="11">Build</text></g>
+        <line x1="285" y1="286" x2="298" y2="286" stroke="#8b949e" stroke-width="1.5" marker-end="url(#arr)"/>
+
+        <g class="node"><rect class="box" x="300" y="258" width="116" height="56" rx="8"/>
+          <text class="t" x="358" y="284" text-anchor="middle" font-size="15">🧪</text>
+          <text class="t" x="358" y="302" text-anchor="middle" font-size="11">Deploy dev</text></g>
+        <line x1="416" y1="286" x2="429" y2="286" stroke="#8b949e" stroke-width="1.5" marker-end="url(#arr)"/>
+
+        <g class="node"><rect class="box" x="431" y="258" width="116" height="56" rx="8"/>
+          <text class="t" x="489" y="284" text-anchor="middle" font-size="15">🔬</text>
+          <text class="t" x="489" y="302" text-anchor="middle" font-size="11">Deploy test</text></g>
+        <line x1="547" y1="286" x2="560" y2="286" stroke="#8b949e" stroke-width="1.5" marker-end="url(#arr)"/>
+
+        <g class="node"><rect class="box" x="562" y="258" width="116" height="56" rx="8"/>
+          <text class="t" x="620" y="284" text-anchor="middle" font-size="15">🎭</text>
+          <text class="t" x="620" y="302" text-anchor="middle" font-size="11">Deploy stage</text></g>
+        <line x1="678" y1="286" x2="691" y2="286" stroke="#8b949e" stroke-width="1.5" marker-end="url(#arr)"/>
+
+        <g class="node"><rect class="box gate" x="693" y="258" width="116" height="56" rx="8"/>
+          <text class="t" x="751" y="284" text-anchor="middle" font-size="15">✋</text>
+          <text class="t" x="751" y="302" text-anchor="middle" font-size="11">Approval</text></g>
+        <line x1="809" y1="286" x2="822" y2="286" stroke="#8b949e" stroke-width="1.5" marker-end="url(#arr)"/>
+
+        <g class="node"><rect class="box prod" x="824" y="258" width="116" height="56" rx="8"/>
+          <text class="t" x="882" y="284" text-anchor="middle" font-size="15">🚀</text>
+          <text class="t" x="882" y="302" text-anchor="middle" font-size="11">Deploy prod</text></g>
+
+        <!-- Stages act on these resources (below the band) -->
+        <!-- Build stage -> CodeBuild + ECR -->
+        <line x1="227" y1="314" x2="170" y2="358" stroke="#8b949e" stroke-width="1.5" marker-end="url(#arr)"/>
+        <g class="node"><rect class="box" x="104" y="360" width="120" height="52" rx="8"/>
+          <text class="t" x="164" y="384" text-anchor="middle">🔨 CodeBuild</text>
+          <text class="s" x="164" y="400" text-anchor="middle">build · test · scan</text></g>
+        <line x1="224" y1="386" x2="240" y2="386" stroke="#8b949e" stroke-width="1.5" marker-end="url(#arr)"/>
+        <g class="node"><rect class="box" x="242" y="360" width="112" height="52" rx="8"/>
+          <text class="t" x="298" y="384" text-anchor="middle">📦 ECR</text>
+          <text class="s" x="298" y="400" text-anchor="middle">image by digest</text></g>
+        <text class="s" x="164" y="430" text-anchor="middle">security-scan hook (pluggable) ⏸</text>
+
+        <!-- Deploy dev/test/stage -> ECS services -->
+        <line x1="358" y1="314" x2="358" y2="438" stroke="#8b949e" stroke-width="1.2" stroke-dasharray="4 4" marker-end="url(#arr)"/>
+        <line x1="489" y1="314" x2="489" y2="438" stroke="#8b949e" stroke-width="1.2" stroke-dasharray="4 4" marker-end="url(#arr)"/>
+        <line x1="620" y1="314" x2="620" y2="438" stroke="#8b949e" stroke-width="1.2" stroke-dasharray="4 4" marker-end="url(#arr)"/>
+        <g class="node"><rect class="box" x="300" y="440" width="116" height="46" rx="8"/>
+          <text class="t" x="358" y="468" text-anchor="middle">🧪 ECS dev</text></g>
+        <g class="node"><rect class="box" x="431" y="440" width="116" height="46" rx="8"/>
+          <text class="t" x="489" y="468" text-anchor="middle">🔬 ECS test</text></g>
+        <g class="node"><rect class="box" x="562" y="440" width="116" height="46" rx="8"/>
+          <text class="t" x="620" y="468" text-anchor="middle">🎭 ECS stage</text></g>
+        <text class="s" x="489" y="506" text-anchor="middle">ECS Fargate · rolling updates · scale-to-zero when idle · no ALB</text>
+
+        <!-- Deploy prod -> CodeDeploy blue/green cluster -->
+        <rect class="zone" x="700" y="350" width="256" height="200" rx="12"/>
+        <text class="zlabel" x="712" y="370">Production — blue/green</text>
+        <line x1="882" y1="314" x2="800" y2="370" stroke="#8b949e" stroke-width="1.5" marker-end="url(#arr)"/>
+        <g class="node"><rect class="box prod" x="716" y="376" width="132" height="44" rx="8"/>
+          <text class="t" x="782" y="403" text-anchor="middle">🚀 CodeDeploy</text></g>
+        <line x1="762" y1="420" x2="762" y2="432" stroke="#8b949e" stroke-width="1.5" marker-end="url(#arr)"/>
+        <g class="node"><rect class="box" x="716" y="434" width="92" height="44" rx="8"/>
+          <text class="t" x="762" y="461" text-anchor="middle">⚖️ ALB</text></g>
+        <line x1="808" y1="446" x2="818" y2="438" stroke="#8b949e" stroke-width="1.2" marker-end="url(#arr)"/>
+        <line x1="808" y1="456" x2="818" y2="464" stroke="#8b949e" stroke-width="1.2" marker-end="url(#arr)"/>
+        <g class="node"><rect class="box blueb" x="820" y="424" width="122" height="26" rx="6"/>
+          <text class="t" x="881" y="442" text-anchor="middle" font-size="11">BLUE target group</text></g>
+        <g class="node"><rect class="box greenb" x="820" y="456" width="122" height="26" rx="6"/>
+          <text class="t" x="881" y="474" text-anchor="middle" font-size="11">GREEN target group</text></g>
+        <line x1="881" y1="450" x2="852" y2="492" stroke="#8b949e" stroke-width="1.2" marker-end="url(#arr)"/>
+        <line x1="881" y1="482" x2="858" y2="494" stroke="#8b949e" stroke-width="1.2" marker-end="url(#arr)"/>
+        <g class="node"><rect class="box prod" x="716" y="494" width="224" height="34" rx="8"/>
+          <text class="t" x="828" y="516" text-anchor="middle">ECS prod service (Fargate)</text></g>
+
+        <!-- Supporting infra band -->
+        <rect class="zone" x="40" y="560" width="624" height="120" rx="12"/>
+        <text class="zlabel" x="54" y="580">Supporting (shared, Terraform-managed · tagged msp-control)</text>
+        <g class="node"><rect class="box" x="56" y="600" width="132" height="48" rx="8"/>
+          <text class="t" x="122" y="622" text-anchor="middle">🗄️ S3</text>
+          <text class="s" x="122" y="638" text-anchor="middle">TF state</text></g>
+        <g class="node"><rect class="box" x="200" y="600" width="132" height="48" rx="8"/>
+          <text class="t" x="266" y="622" text-anchor="middle">🗄️ S3</text>
+          <text class="s" x="266" y="638" text-anchor="middle">artifacts</text></g>
+        <g class="node"><rect class="box" x="344" y="600" width="142" height="48" rx="8"/>
+          <text class="t" x="415" y="622" text-anchor="middle">🔐 IAM</text>
+          <text class="s" x="415" y="638" text-anchor="middle">roles + deny-direct</text></g>
+        <g class="node"><rect class="box" x="498" y="600" width="142" height="48" rx="8"/>
+          <text class="t" x="569" y="622" text-anchor="middle">📊 CloudWatch</text>
+          <text class="s" x="569" y="638" text-anchor="middle">logs / alarms</text></g>
+      </svg>
+    </div>
+    <div class="arch-legend">
+      <span><i style="border-color:var(--accent)"></i> Orchestrator (CodePipeline)</span>
+      <span><i style="border-color:var(--amber);border-style:dashed"></i> Manual approval gate</span>
+      <span><i style="border-color:var(--green)"></i> Production / blue-green</span>
+      <span><i style="border-color:var(--blue)"></i> Blue target group</span>
+      <span><i style="border-color:var(--border)"></i> Standard construct</span>
+    </div>
+  </div>
+</main>
+
+<footer>
+  AWS MSP Release Management · static site · no build step, no dependencies ·
+  see <code>docs/RELEASE_MANAGEMENT_DESIGN.md</code> for the full design
+</footer>
+
+<script>
+const STAGES = [
+  {
+    id: "source", ico: "🌿", name: "Source", svc: "GitHub",
+    what: [
+      "Developer opens a pull request; required reviewers approve",
+      "Merge to the release branch triggers the pipeline",
+      "Source snapshot (commit) handed to the build stage"
+    ],
+    constructs: ["GitHub repo", "Branch protection", "CodeConnections (GitHub → AWS)"],
+    tools: [["Branch protection", "free"], ["Security scanning", "later"]],
+    msp: ["Version control (mandatory #1)", "PR approval gates (GAP)"]
+  },
+  {
+    id: "build", ico: "🔨", name: "Build", svc: "CodeBuild",
+    what: [
+      "Build the container image once; tag by immutable digest",
+      "Run unit + integration tests",
+      "Push image to ECR (immutable)",
+      "Security-scan hook reserved — external tools plug in later (deferred)"
+    ],
+    constructs: ["CodeBuild project", "ECR repository", "Artifact (image digest)", "Security-scan phase (no-op stub)"],
+    tools: [["unit + integration tests", "free"], ["security-scan hook — pluggable later", "later"]],
+    msp: ["CI quality gates (GAP — scanners deferred)", "Build once / promote by digest"]
+  },
+  {
+    id: "dev", ico: "🧪", name: "Deploy dev", svc: "ECS rolling",
+    what: [
+      "Deploy the built image to the dev ECS service",
+      "Cheap rolling update — no dual target groups",
+      "Smoke / validation tests run against dev"
+    ],
+    constructs: ["ECS Service (dev)", "Fargate task", "Task definition"],
+    tools: [["ECS rolling update", "free"]],
+    msp: ["Test in non-prod before prod (mandatory #2)"]
+  },
+  {
+    id: "test", ico: "🔬", name: "Deploy test", svc: "ECS rolling",
+    what: [
+      "Promote the SAME image digest to the test service",
+      "Run the broader validation / integration suite",
+      "No rebuild — identical artifact moves forward"
+    ],
+    constructs: ["ECS Service (test)", "Fargate task"],
+    tools: [["ECS rolling update", "free"]],
+    msp: ["Test in non-prod before prod (mandatory #2)"]
+  },
+  {
+    id: "stage", ico: "🎭", name: "Deploy stage", svc: "ECS rolling",
+    what: [
+      "Promote the same digest to a prod-like staging service",
+      "Final pre-production validation",
+      "Optional: ITSM change record created + linked to the digest"
+    ],
+    constructs: ["ECS Service (stage)", "Fargate task", "(optional) ITSM change record"],
+    tools: [["ECS rolling update", "free"], ["ITSM linkage", "paid"]],
+    msp: ["Test in non-prod before prod (mandatory #2)", "Change record in ITSM (GAP — open)"]
+  },
+  {
+    id: "approval", ico: "✋", name: "Manual approval", svc: "CodePipeline gate",
+    what: [
+      "Pipeline pauses before production",
+      "A human reviewer explicitly approves the change",
+      "Approval is recorded as audit evidence"
+    ],
+    constructs: ["CodePipeline manual approval action", "SNS notification (optional)"],
+    tools: [["Manual approval", "free"]],
+    msp: ["Approval before prod (mandatory #3)"]
+  },
+  {
+    id: "prod", ico: "🚀", name: "Deploy prod", svc: "CodeDeploy blue/green", prod: true,
+    what: [
+      "CodeDeploy launches a green task set with the new version",
+      "Traffic shifts blue → green (canary / linear / all-at-once)",
+      "Health checks + CloudWatch alarms watch green",
+      "Automatic rollback to blue on failure — no human action"
+    ],
+    constructs: ["ECS Service (CODE_DEPLOY)", "ALB + 2 target groups", "CodeDeploy app + deployment group", "appspec.yaml + taskdef.json"],
+    tools: [["CodeDeploy blue/green", "free"], ["Auto-rollback on alarm", "free"]],
+    msp: ["Automated rollback (GAP)", "Deploy automation (mandatory #4)"]
+  }
+];
+
+const flow = document.getElementById("flow");
+const detail = document.getElementById("detail");
+
+STAGES.forEach((s, i) => {
+  const el = document.createElement("div");
+  el.className = "stage" + (s.id === "approval" ? " gate" : "") + (s.prod ? " prod" : "");
+  el.dataset.id = s.id;
+  el.innerHTML = `
+    <div class="ico">${s.ico}</div>
+    <div class="name">${s.name}</div>
+    <div class="svc">${s.svc}</div>
+    ${i < STAGES.length - 1 ? '<div class="arrow">→</div>' : ''}
+  `;
+  el.addEventListener("click", () => select(s.id));
+  flow.appendChild(el);
+});
+
+function chip(t) {
+  const [label, kind] = t;
+  const cls = kind === 'free' ? 'free' : kind === 'paid' ? 'paid' : kind === 'later' ? 'later' : '';
+  const suffix = kind === 'paid' ? ' ⚠︎' : kind === 'later' ? ' ⏸' : '';
+  return `<span class="chip ${cls}">${label}${suffix}</span>`;
+}
+
+function select(id) {
+  const s = STAGES.find(x => x.id === id);
+  document.querySelectorAll(".stage").forEach(e => e.classList.toggle("active", e.dataset.id === id));
+  detail.innerHTML = `
+    <div class="detail-head">
+      <div class="ico">${s.ico}</div>
+      <div>
+        <h2>${s.name}</h2>
+        <div class="sub">${s.svc}</div>
+      </div>
+    </div>
+    <div class="detail-body">
+      <div>
+        <h3>What happens</h3>
+        <ul>${s.what.map(w => `<li>${w}</li>`).join("")}</ul>
+      </div>
+      <div>
+        <h3>AWS constructs</h3>
+        <ul>${s.constructs.map(c => `<li>${c}</li>`).join("")}</ul>
+        <h3>Tooling</h3>
+        <div class="chips">${s.tools.map(chip).join("")}</div>
+      </div>
+      <div class="msp">
+        <h3>Satisfies</h3>
+        ${s.msp.map(m => `<span class="tag">✓ ${m}</span>`).join(" ")}
+      </div>
+    </div>
+  `;
+}
+select("source");
+
+/* ---- Blue/green interactive ---- */
+const bluePct = document.getElementById("bluePct");
+const greenPct = document.getElementById("greenPct");
+const tgBlueFill = document.querySelector("#tgBlue .tg-fill");
+const tgGreenFill = document.querySelector("#tgGreen .tg-fill");
+const tgGreen = document.getElementById("tgGreen");
+const status = document.getElementById("bgStatus");
+const btnDeploy = document.getElementById("btnDeploy");
+const btnHealthy = document.getElementById("btnHealthy");
+const btnFail = document.getElementById("btnFail");
+const btnReset = document.getElementById("btnReset");
+
+let green = 0;
+function render() {
+  bluePct.textContent = (100 - green) + "%";
+  greenPct.textContent = green + "%";
+  tgBlueFill.style.width = (100 - green) + "%";
+  tgGreenFill.style.width = green + "%";
+  tgGreen.classList.toggle("up", green > 0);
+}
+function setStatus(msg, cls) { status.textContent = msg; status.className = "status" + (cls ? " " + cls : ""); }
+
+btnDeploy.addEventListener("click", () => {
+  green = 10; render();
+  setStatus("Green task set launched. Canary: 10% of traffic shifted to the new version.", "warn");
+  btnDeploy.disabled = true; btnHealthy.disabled = false; btnFail.disabled = false;
+});
+btnHealthy.addEventListener("click", () => {
+  green = Math.min(100, green + 30); render();
+  if (green >= 100) {
+    setStatus("✓ Shift complete. Green is live at 100%. Blue task set drained and terminated after the bake window.", "ok");
+    btnHealthy.disabled = true; btnFail.disabled = true;
+  } else {
+    setStatus("Health checks passing. Traffic shifted to " + green + "% green (linear shift continues).", "warn");
+  }
+});
+btnFail.addEventListener("click", () => {
+  setStatus("✕ Health check / CloudWatch alarm failed on green. CodeDeploy AUTO-ROLLBACK fired — traffic returned to blue (100%), green torn down. No human action. This is the audit evidence for automated rollback.", "err");
+  green = 0; render();
+  btnHealthy.disabled = true; btnFail.disabled = true; btnDeploy.disabled = false;
+});
+btnReset.addEventListener("click", () => {
+  green = 0; render();
+  setStatus("Idle — blue serving 100% of production traffic.");
+  btnDeploy.disabled = false; btnHealthy.disabled = true; btnFail.disabled = true;
+});
+render();
+
+/* ---- View tabs ---- */
+const viewPipeline = document.getElementById("view-pipeline");
+const viewArch = document.getElementById("view-arch");
+document.querySelectorAll(".tab").forEach(tab => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t === tab));
+    const isArch = tab.dataset.view === "arch";
+    viewArch.hidden = !isArch;
+    viewPipeline.hidden = isArch;
+  });
+});
+</script>
+</body>
+</html>
