@@ -43,6 +43,8 @@ aws-msp-mb/
 
 ## Docs
 
+- [Controls registry](docs/CONTROLS.md) — what controls are covered + how to add one
 - [Release Management design](docs/RELEASE_MANAGEMENT_DESIGN.md) — decisions, architecture, scorecards
 - [Branch & release strategy](docs/BRANCH_AND_RELEASE_STRATEGY.md) — how changes flow to prod
+- [AWS account setup](docs/AWS_ACCOUNT_SETUP.md) — provision the deploy account via Control Tower + SSO
 - Interactive diagram — `web/index.html` (open in a browser)

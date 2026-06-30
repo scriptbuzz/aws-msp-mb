@@ -296,10 +296,13 @@ No open decisions remain. Next is the branch & release strategy doc + scaffoldin
 
 ## 11. Manual / apply-time tasks (cannot be automated)
 
+0. **Provision the deploy account** via Control Tower Account Factory + grant access via
+   IAM Identity Center (SSO). Full step-by-step in [AWS_ACCOUNT_SETUP.md](AWS_ACCOUNT_SETUP.md).
 1. Create S3 state bucket + artifact bucket (Terraform state chicken-and-egg).
 2. Authorize the GitHub connection OAuth handshake in the AWS console (comes up `PENDING`).
 3. First `terraform apply` runs **locally** to create the pipeline; afterward the pipeline self-manages.
-4. Provide AWS credentials via the project `.env` (per credential rules).
+4. Provide AWS access via the project `.env` — **`AWS_PROFILE` (SSO), not long-lived keys**
+   (see `.env.example` + AWS_ACCOUNT_SETUP.md). Run with `set -a && source .env && set +a && terraform ...`.
 
 ---
 
