@@ -1,6 +1,12 @@
 # aws-msp-mb
 
-*Last updated: 2026-07-05 12:12*
+![Release](https://img.shields.io/github/v/release/scriptbuzz/aws-msp-mb?sort=semver&color=success)
+![Terraform](https://img.shields.io/badge/Terraform-1.10%2B-7B42BC?logo=terraform&logoColor=white)
+![AWS](https://img.shields.io/badge/AWS-ECS%20Fargate-FF9900?logo=amazonaws&logoColor=white)
+![CI/CD](https://img.shields.io/badge/CI%2FCD-CodePipeline%20V2-527FFF?logo=awscodepipeline&logoColor=white)
+![Deploy](https://img.shields.io/badge/deploy-blue%2Fgreen-2496ED)
+
+*Last updated: 2026-07-06 11:09*
 
 Monorepo supporting the provisioning of AWS solutions required to pass the
 **AWS MSP audit**. It is **multi-control**: controls are opt-in (feature-flagged),
@@ -9,10 +15,11 @@ so you provision only what you choose. The first control in scope is
 See the **[controls registry](docs/CONTROLS.md)** for what's covered and how to add a control.
 
 > **Status: Release Management deployed & operational in AWS (sandbox account).** The
-> first release ran the pipeline end-to-end — Source → Build → dev → test → stage →
-> change-record → manual approval → prod blue/green — and the prod site is live.
-> See [docs/STATUS.md](docs/STATUS.md) for the running status log; remaining work is
-> audit-evidence capture and a rollback demo.
+> pipeline runs end-to-end — Source → Build → dev → test → stage → change-record →
+> manual approval → prod blue/green — and the prod site is live. Audit evidence is
+> captured and automated rollback has been demonstrated (zero downtime).
+> See [docs/STATUS.md](docs/STATUS.md) for the running status log and
+> [docs/evidence/release-management/EVIDENCE.md](docs/evidence/release-management/EVIDENCE.md) for the proof.
 
 ## Standing rules
 
@@ -62,6 +69,7 @@ aws-msp-mb/
 - [Security / secrets handling](SECURITY.md) — what's never committed + the pre-commit secret scanner (`git config core.hooksPath .githooks`)
 
 **Status & evidence**
+- [Changelog](CHANGELOG.md) — versioned release history
 - [Status log](docs/STATUS.md) — running 3P status entries
 - [Audit evidence](docs/evidence/release-management/EVIDENCE.md) — first-release proof mapped to the control
 - Interactive diagram — `web/index.html` (open in a browser)
