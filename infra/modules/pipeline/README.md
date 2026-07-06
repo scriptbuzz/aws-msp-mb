@@ -10,7 +10,8 @@ The CI/CD orchestrator — **CodePipeline V2** + CodeBuild + the GitHub connecti
 - Stages: Source → Build → Deploy-dev → Deploy-test → Deploy-stage →
   **Approve-prod** (change record, then manual approval) → Deploy-prod
   (`CodeDeployToECS` blue/green)
-- Three **CodeBuild** projects (smallest compute, `BUILD_GENERAL1_SMALL`):
+- Three **CodeBuild** projects (`cb-build` on `BUILD_GENERAL1_MEDIUM` for faster
+  docker builds; the two lightweight CLI projects stay on `BUILD_GENERAL1_SMALL`):
   - `cb-build` — `pipeline/buildspec.yml`: image + smoke test + reserved no-op
     **security-scan** block (scanners deferred — design §8a) + push by digest
   - `cb-deploy-env` — `pipeline/deploy_env.buildspec.yml`: one project reused

@@ -52,9 +52,9 @@ variable "enable_test_listener" {
 }
 
 variable "termination_wait_minutes" {
-  description = "Bake window before the old (blue) task set is terminated"
+  description = "Bake window before the old (blue) task set is terminated (0 = terminate immediately on success)"
   type        = number
-  default     = 5
+  default     = 0
 }
 
 variable "alarm_5xx_threshold" {
