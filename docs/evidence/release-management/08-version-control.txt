@@ -1,0 +1,8 @@
+19b1a5a docs: sync all docs to deployed & operational status (first release live)
+3576eb4 docs: add status log with first-release 3P entry
+7838f08 fix(iam): allow codepipeline role GetDeploymentConfig on AWS-managed configs
+c35cb7f fix(pipeline): ship deploy/change-record buildspecs in the Build artifact
+c15c791 release: bump app to 1.0.3 (first full pipeline run)
+7585470 release: bump app to 1.0.2 (verify push trigger)
+027d278 fix(pipeline): match app/ direct children in V2 trigger path filter
+cb34abf release: bump app to 1.0.1 (first pipeline release)

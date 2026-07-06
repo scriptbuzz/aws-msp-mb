@@ -1,0 +1,7 @@
+"type": "change-record"
+"target": "prod"
+"date": "2026-07-03T18:33:42Z"
+"pipeline_execution_id": "d1f7307a-9a89-46a6-aa43-73ab8de23747"
+"commit": "unknown"
+"image": "561521479906.dkr.ecr.us-east-1.amazonaws.com/mb-use1-ecr-app@sha256:f5f484be8a89c22d8f52be40513924ad217ff6d40adfe7dacd9271114e0cf6f1"
+"artifact_digest": "sha256:f5f484be8a89c22d8f52be40513924ad217ff6d40adfe7dacd9271114e0cf6f1"

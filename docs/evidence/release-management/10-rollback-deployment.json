@@ -1,0 +1,13 @@
+{
+    "id": "d-F9OSSQ1EK",
+    "status": "Stopped",
+    "description": "Automated-rollback demo: bad image, expect auto-rollback to blue",
+    "created": "2026-07-04T14:49:05.825000-04:00",
+    "badTaskDef": "mb-prod-use1-app:5 (image tag rollback-demo-nonexistent)",
+    "autoRollbackEnabled": true,
+    "autoRollbackEvents": [
+        "DEPLOYMENT_STOP_ON_ALARM",
+        "DEPLOYMENT_STOP_ON_REQUEST",
+        "DEPLOYMENT_FAILURE"
+    ]
+}

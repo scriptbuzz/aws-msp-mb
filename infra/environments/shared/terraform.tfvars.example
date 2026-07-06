@@ -1,0 +1,16 @@
+# Copy to terraform.tfvars (gitignored) and fill in.
+
+# Pre-created in the bootstrap step (see environments/README.md).
+artifact_bucket_name = "<your-pipeline-artifact-bucket>"
+
+# Everything else has sensible defaults (see variables.tf). Override to port
+# the stack to another org/account/region:
+# org                = "mb"
+# region             = "us-east-1"
+# region_code        = "use1"
+# full_repository_id = "scriptbuzz/aws-msp-mb"
+# branch             = "main"
+
+# Optional: SSM SecureString parameter holding a GitHub token (repo scope) so
+# the pipeline can open the change-record issue. Empty = artifact-only record.
+# github_token_ssm_param = "/mb/msp/github-token"

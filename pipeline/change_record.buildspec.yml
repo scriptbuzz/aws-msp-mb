@@ -1,0 +1,51 @@
+# ITSM change record (decision #19): before the prod approval gate, record the
+# change — artifact digest, commit, pipeline execution — as a GitHub issue
+# (when a token is configured) and always as an S3 artifact (evidence either
+# way). The mb-use1-cb-change-record project supplies GITHUB_REPO and
+# GITHUB_TOKEN_SSM_PARAM; the pipeline injects PIPELINE_EXECUTION_ID.
+version: 0.2
+
+phases:
+  build:
+    commands:
+      - IMAGE_URI=$(jq -r '.ImageURI' imageDetail.json)
+      - DIGEST="${IMAGE_URI##*@}"
+      - COMMIT="${CODEBUILD_RESOLVED_SOURCE_VERSION:-unknown}"
+      - |
+        jq -n \
+          --arg digest "$DIGEST" \
+          --arg image "$IMAGE_URI" \
+          --arg commit "$COMMIT" \
+          --arg execution "${PIPELINE_EXECUTION_ID:-unknown}" \
+          --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+          '{type: "change-record", target: "prod", date: $date,
+            pipeline_execution_id: $execution, commit: $commit,
+            image: $image, artifact_digest: $digest}' > change-record.json
+      - cat change-record.json
+      - |
+        TOKEN=""
+        if [ -n "${GITHUB_TOKEN_SSM_PARAM:-}" ]; then
+          TOKEN=$(aws ssm get-parameter --name "$GITHUB_TOKEN_SSM_PARAM" --with-decryption \
+                    --query 'Parameter.Value' --output text 2>/dev/null || true)
+        fi
+        if [ -n "$TOKEN" ] && [ "$TOKEN" != "None" ]; then
+          BODY=$(jq -n --slurpfile cr change-record.json \
+            '{title: ("Change record: prod deploy " + $cr[0].artifact_digest),
+              labels: ["change-record"],
+              body: ("Automated change record for the production deployment.\n\n```json\n" + ($cr[0] | tostring) + "\n```")}')
+          RESP=$(curl -sf -X POST "https://api.github.com/repos/${GITHUB_REPO}/issues" \
+                   -H "Authorization: Bearer ${TOKEN}" \
+                   -H "Accept: application/vnd.github+json" \
+                   -d "$BODY") || { echo "WARNING - GitHub issue creation failed; artifact-only record"; RESP=""; }
+          if [ -n "$RESP" ]; then
+            ISSUE_URL=$(echo "$RESP" | jq -r '.html_url')
+            echo "Change-record issue: ${ISSUE_URL}"
+            jq --arg url "$ISSUE_URL" '. + {issue_url: $url}' change-record.json > cr.tmp && mv cr.tmp change-record.json
+          fi
+        else
+          echo "No GitHub token configured (GITHUB_TOKEN_SSM_PARAM empty/unreadable) - change record stored as pipeline artifact only"
+        fi
+
+artifacts:
+  files:
+    - change-record.json

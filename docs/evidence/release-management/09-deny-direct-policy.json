@@ -1,0 +1,6 @@
+[
+    {
+        "name": "mb-use1-deny-direct-prod-deploy",
+        "arn": "arn:aws:iam::561521479906:policy/mb-use1-deny-direct-prod-deploy"
+    }
+]

@@ -1,0 +1,9 @@
+{
+    "id": "d-MRDD04EDK",
+    "status": "Succeeded",
+    "config": "CodeDeployDefault.ECSAllAtOnce",
+    "style": "ECS",
+    "created": "2026-07-03T14:40:57.102000-04:00",
+    "completed": "2026-07-03T14:47:48.740000-04:00",
+    "rollback": null
+}

@@ -1,0 +1,25 @@
+{
+  "family": "<FAMILY>",
+  "requiresCompatibilities": ["FARGATE"],
+  "networkMode": "awsvpc",
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "<TASK_EXECUTION_ROLE_ARN>",
+  "taskRoleArn": "<TASK_ROLE_ARN>",
+  "containerDefinitions": [
+    {
+      "name": "<CONTAINER_NAME>",
+      "image": "<IMAGE1_NAME>",
+      "essential": true,
+      "portMappings": [{ "containerPort": 80, "protocol": "tcp" }],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "<LOG_GROUP>",
+          "awslogs-region": "<AWS_REGION>",
+          "awslogs-stream-prefix": "<CONTAINER_NAME>"
+        }
+      }
+    }
+  ]
+}

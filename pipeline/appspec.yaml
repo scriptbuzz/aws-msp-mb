@@ -1,0 +1,13 @@
+# CodeDeploy ECS blue/green (prod). <TASK_DEFINITION> is substituted by the
+# CodeDeployToECS pipeline action with the task definition it registers from
+# taskdef.json. Lifecycle hooks (BeforeInstall / AfterAllowTestTraffic / ...)
+# are intentionally unused — health checks + the 5xx alarm gate the shift.
+version: 0.0
+Resources:
+  - TargetService:
+      Type: AWS::ECS::Service
+      Properties:
+        TaskDefinition: "<TASK_DEFINITION>"
+        LoadBalancerInfo:
+          ContainerName: "app"
+          ContainerPort: 80

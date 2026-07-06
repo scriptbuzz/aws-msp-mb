@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>aws-msp-mb — sample app</title>
+  <style>
+    body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+           background:#0d1117; color:#e6edf3; display:flex; min-height:100vh;
+           align-items:center; justify-content:center; }
+    .card { text-align:center; padding:40px; }
+    h1 { margin:0 0 8px; }
+    .v { color:#58a6ff; font-family:monospace; font-size:14px; }
+    .t { color:#8b949e; font-family:monospace; font-size:12px; margin-top:4px; }
+    .sub { color:#8b949e; font-size:13px; margin-top:12px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>aws-msp-mb</h1>
+    <div class="v">build: v<span id="ver">1.0.0</span></div>
+    <div class="t">deployed: <span id="built">not yet built</span></div>
+    <p class="sub">Sample static site deployed by the Release Management pipeline.<br>
+    Bump <code>app/VERSION</code> to trigger a release.</p>
+  </div>
+  <script>
+    // VERSION is the release marker; this banner is what changes between deploys.
+    // (At build time the pipeline can stamp the real version in here.)
+  </script>
+</body>
+</html>

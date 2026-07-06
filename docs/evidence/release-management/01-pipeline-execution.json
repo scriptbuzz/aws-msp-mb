@@ -1,0 +1,9 @@
+{
+    "status": "Succeeded",
+    "pipeline": "mb-use1-pipeline-app",
+    "version": 2,
+    "artifacts": {
+        "revisionId": "c35cb7f68ed93da05ba388956d06dd633e8aab65",
+        "summary": "{\"ProviderType\":\"GitHub\",\"CommitMessage\":\"fix(pipeline): ship deploy/change-record buildspecs in the Build artifact\\n\\nDeploy-dev/test/stage and ChangeRecord run CodeBuild against BuildArtifact and\\nload their buildspec from it, but the Build stage only emitted imageDetail/\\ntaskdef/appspec — so those stages failed with 'no such file'. Include the two\\nbuildspec files in the artifact.\"}"
+    }
+}

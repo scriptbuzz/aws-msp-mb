@@ -1,0 +1,6 @@
+# Copy to terraform.tfvars (gitignored) and fill in.
+
+# Same bucket backend.hcl points at — used to read the shared root's outputs.
+state_bucket_name = "<your-terraform-state-bucket>"
+
+# Defaults cover the rest (see variables.tf).

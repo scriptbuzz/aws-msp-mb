@@ -1,0 +1,71 @@
+# Build stage: image -> ECR by immutable digest; smoke test; reserved no-op
+# security-scan hook (design §8a). Runs in the mb-use1-cb-build CodeBuild
+# project, which supplies ECR_REPO_URL, ECR_REPO_NAME, CONTAINER_NAME,
+# TASK_EXECUTION_ROLE_ARN, TASK_ROLE_ARN, PROD_FAMILY.
+#
+# NOTE: CodeBuild phase names are fixed (install/pre_build/build/post_build),
+# so the reserved security-scan extension point is a labeled block inside the
+# build phase — same plug-in contract: install the tool in `install`, invoke it
+# in the SECURITY-SCAN block, let its non-zero exit fail the stage.
+version: 0.2
+
+phases:
+  pre_build:
+    commands:
+      - aws ecr get-login-password | docker login --username AWS --password-stdin "${ECR_REPO_URL%%/*}"
+      - VERSION=$(tr -d '[:space:]' < app/VERSION)
+      - COMMIT=$(echo "${CODEBUILD_RESOLVED_SOURCE_VERSION:-local}" | cut -c1-7)
+      - IMAGE_TAG="${VERSION}-${COMMIT}"
+      - BUILD_TIME=$(date -u +"%Y-%m-%d %H:%M UTC")
+      - echo "Building ${ECR_REPO_URL}:${IMAGE_TAG} at ${BUILD_TIME}"
+      # Stamp the release version + build timestamp into the banner so each deploy is visibly distinct.
+      - sed -i "s|<span id=\"ver\">[^<]*</span>|<span id=\"ver\">${IMAGE_TAG}</span>|" app/index.html
+      - sed -i "s|<span id=\"built\">[^<]*</span>|<span id=\"built\">${BUILD_TIME}</span>|" app/index.html
+
+  build:
+    commands:
+      - docker build -t "${ECR_REPO_URL}:${IMAGE_TAG}" app/
+
+      # --- tests: container smoke test (serves the site, version stamped) ---
+      - docker run -d --rm --name smoke -p 8080:80 "${ECR_REPO_URL}:${IMAGE_TAG}"
+      - sleep 3
+      - curl -sf http://localhost:8080/ | grep -q "aws-msp-mb"
+      - curl -sf http://localhost:8080/ | grep -q "${IMAGE_TAG}"
+      - docker stop smoke
+
+      # --- SECURITY-SCAN (reserved extension point — design §8a) ---
+      # DEFERRED: no scanners wired. Plug in Checkov/Semgrep/Trivy here and let
+      # a non-zero exit fail the stage. Pass-through for now.
+      - echo "security-scan hook reserved; no scanners wired (pass-through)"
+
+  post_build:
+    commands:
+      - docker push "${ECR_REPO_URL}:${IMAGE_TAG}"
+      # Promotion is by immutable digest, never by tag (design §6).
+      - DIGEST=$(aws ecr describe-images --repository-name "$ECR_REPO_NAME" --image-ids imageTag="$IMAGE_TAG" --query 'imageDetails[0].imageDigest' --output text)
+      - IMAGE_URI="${ECR_REPO_URL}@${DIGEST}"
+      - echo "Pushed ${IMAGE_URI}"
+      # imageDetail.json feeds the lower-env deploys AND the CodeDeployToECS action.
+      - printf '{"ImageURI":"%s"}' "$IMAGE_URI" > imageDetail.json
+      # Render the prod task definition; <IMAGE1_NAME> stays — the
+      # CodeDeployToECS action substitutes it from imageDetail.json.
+      - |
+        sed -e "s|<FAMILY>|${PROD_FAMILY}|" \
+            -e "s|<LOG_GROUP>|/ecs/${PROD_FAMILY}|" \
+            -e "s|<AWS_REGION>|${AWS_REGION}|" \
+            -e "s|<CONTAINER_NAME>|${CONTAINER_NAME}|" \
+            -e "s|<TASK_EXECUTION_ROLE_ARN>|${TASK_EXECUTION_ROLE_ARN}|" \
+            -e "s|<TASK_ROLE_ARN>|${TASK_ROLE_ARN}|" \
+            pipeline/taskdef.json > taskdef.json
+      - cp pipeline/appspec.yaml appspec.yaml
+
+artifacts:
+  files:
+    - imageDetail.json
+    - taskdef.json
+    - appspec.yaml
+    # Downstream stages (Deploy-dev/test/stage, ChangeRecord) run CodeBuild with
+    # this BuildArtifact as input and load their buildspec from it — so the
+    # buildspec files must travel in the artifact.
+    - pipeline/deploy_env.buildspec.yml
+    - pipeline/change_record.buildspec.yml

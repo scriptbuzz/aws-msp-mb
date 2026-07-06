@@ -1,0 +1,65 @@
+[
+    {
+        "stage": "Deploy-prod",
+        "action": "BlueGreen",
+        "status": "Succeeded",
+        "start": "2026-07-03T14:40:55.733000-04:00",
+        "end": "2026-07-03T14:48:11.092000-04:00"
+    },
+    {
+        "stage": "Deploy-prod",
+        "action": "BlueGreen",
+        "status": "Failed",
+        "start": "2026-07-03T14:35:11.409000-04:00",
+        "end": "2026-07-03T14:35:13.070000-04:00"
+    },
+    {
+        "stage": "Approve-prod",
+        "action": "ManualApproval",
+        "status": "Succeeded",
+        "start": "2026-07-03T14:34:09.125000-04:00",
+        "end": "2026-07-03T14:35:10.947000-04:00"
+    },
+    {
+        "stage": "Approve-prod",
+        "action": "ChangeRecord",
+        "status": "Succeeded",
+        "start": "2026-07-03T14:33:36.390000-04:00",
+        "end": "2026-07-03T14:34:08.748000-04:00"
+    },
+    {
+        "stage": "Deploy-stage",
+        "action": "Deploy",
+        "status": "Succeeded",
+        "start": "2026-07-03T14:30:26.908000-04:00",
+        "end": "2026-07-03T14:33:35.850000-04:00"
+    },
+    {
+        "stage": "Deploy-test",
+        "action": "Deploy",
+        "status": "Succeeded",
+        "start": "2026-07-03T14:26:46.307000-04:00",
+        "end": "2026-07-03T14:30:26.314000-04:00"
+    },
+    {
+        "stage": "Deploy-dev",
+        "action": "Deploy",
+        "status": "Succeeded",
+        "start": "2026-07-03T14:24:10.073000-04:00",
+        "end": "2026-07-03T14:26:45.801000-04:00"
+    },
+    {
+        "stage": "Build",
+        "action": "Build",
+        "status": "Succeeded",
+        "start": "2026-07-03T14:23:06.862000-04:00",
+        "end": "2026-07-03T14:24:09.474000-04:00"
+    },
+    {
+        "stage": "Source",
+        "action": "Source",
+        "status": "Succeeded",
+        "start": "2026-07-03T14:23:01.534000-04:00",
+        "end": "2026-07-03T14:23:06.281000-04:00"
+    }
+]

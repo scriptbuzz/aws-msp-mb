@@ -1,0 +1,17 @@
+Automated-rollback demonstration — 2026-07-04T19:02:06Z
+
+Trigger: CodeDeploy blue/green deployment d-F9OSSQ1EK to prod with a task definition
+(mb-prod-use1-app:5) whose image tag 'rollback-demo-nonexistent' does not exist.
+
+Result: the green task set could not become healthy —
+  CannotPullContainerError: ...mb-use1-ecr-app:rollback-demo-nonexistent: not found
+Traffic was NEVER shifted to the unhealthy version; blue kept serving throughout.
+Green task set was torn down; prod returned to a single (blue) task set.
+
+Production availability during the failed deploy: HTTP 200 on 1.0.3-c35cb7f
+for ~11 minutes of continuous polling (blue unaffected) — zero downtime.
+
+Deployment auto_rollback_configuration: enabled on DEPLOYMENT_FAILURE +
+DEPLOYMENT_STOP_ON_ALARM (see 05-codedeploy-bluegreen / infra). CodeDeploy would
+fail-and-rollback on its own timeout; here the rollback was invoked via
+stop-deployment --auto-rollback-enabled to bound the demo, tearing down green.

@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Pre-commit secret scanner — blocks commits that introduce secrets or
+# sensitive files. Enable once per clone with:
+#   git config core.hooksPath .githooks
+# Bypass for a verified false positive with:  git commit --no-verify
+set -euo pipefail
+
+fail=0
+
+# 1) Block sensitive filenames from being committed.
+while IFS= read -r f; do
+  [ -z "$f" ] && continue
+  base=$(basename "$f")
+  case "$f" in
+    .env.example|*.tfvars.example) : ;;                                  # allowed templates
+    .env|.env.*)                 echo "BLOCKED file: $f (env)"; fail=1 ;;
+    *backend.hcl)                echo "BLOCKED file: $f (backend config)"; fail=1 ;;
+    *.tfvars)                    echo "BLOCKED file: $f (tfvars)"; fail=1 ;;
+    *.tfstate|*.tfstate.*)       echo "BLOCKED file: $f (tfstate)"; fail=1 ;;
+    *.pem|*.key|*.p12|*.pfx)     echo "BLOCKED file: $f (key material)"; fail=1 ;;
+  esac
+  case "$base" in
+    id_rsa|id_dsa|credentials|aws_credentials) echo "BLOCKED file: $f (credential)"; fail=1 ;;
+  esac
+done < <(git diff --cached --name-only --diff-filter=ACM)
+
+# 2) Scan staged additions for secret patterns (AWS keys, private keys, secret vars).
+added=$(git diff --cached -U0 --diff-filter=ACM | grep -E '^\+' | grep -vE '^\+\+\+' || true)
+if printf '%s' "$added" | grep -inE 'AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|aws_secret_access_key[[:space:]]*[=:]' >/dev/null 2>&1; then
+  echo "BLOCKED content: staged changes contain an AWS key / private key / secret:"
+  printf '%s\n' "$added" | grep -inE 'AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|aws_secret_access_key[[:space:]]*[=:]' | head
+  fail=1
+fi
+
+if [ "$fail" -ne 0 ]; then
+  echo ""
+  echo "Commit aborted by pre-commit secret scan."
+  echo "Remove the secret/file, or (verified false positive) re-run with: git commit --no-verify"
+  exit 1
+fi

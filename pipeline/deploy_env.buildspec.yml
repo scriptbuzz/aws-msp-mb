@@ -1,0 +1,53 @@
+# Lower-env rolling deploy (dev/test/stage) — decision #20 scale-to-zero:
+# scale 0->1 with the new image, wait for steady state, validate over the
+# task's public IP, then scale back to 0 (finally-block, so idle cost ≈ $0
+# even when the deploy fails). ENV_NAME is injected per pipeline stage; the
+# mb-use1-cb-deploy-env project supplies CLUSTER_NAME, ENV_PREFIX, REGION_CODE,
+# CONTAINER_NAME. Input artifact: BuildArtifact (imageDetail.json).
+version: 0.2
+
+phases:
+  build:
+    commands:
+      - IMAGE_URI=$(jq -r '.ImageURI' imageDetail.json)
+      - FAMILY="${ENV_PREFIX}-${ENV_NAME}-${REGION_CODE}-app"
+      - SERVICE="${FAMILY}-svc"
+      - echo "Deploying ${IMAGE_URI} to ${ENV_NAME} (${SERVICE})"
+
+      # New task-definition revision = current revision with the image swapped
+      # (same digest promoted through every env — never rebuilt).
+      - aws ecs describe-task-definition --task-definition "$FAMILY" --query 'taskDefinition' > td.json
+      - |
+        jq --arg IMG "$IMAGE_URI" \
+           '.containerDefinitions[0].image = $IMG
+            | del(.taskDefinitionArn, .revision, .status, .requiresAttributes,
+                  .compatibilities, .registeredAt, .registeredBy)' \
+           td.json > td-new.json
+      - NEW_TD_ARN=$(aws ecs register-task-definition --cli-input-json file://td-new.json --query 'taskDefinition.taskDefinitionArn' --output text)
+      - echo "Registered ${NEW_TD_ARN}"
+
+      # Scale 0 -> 1 on the new revision and wait for steady state.
+      - aws ecs update-service --cluster "$CLUSTER_NAME" --service "$SERVICE" --task-definition "$NEW_TD_ARN" --desired-count 1 > /dev/null
+      - aws ecs wait services-stable --cluster "$CLUSTER_NAME" --services "$SERVICE"
+
+      # Validate: curl the running task's public IP (no ALB in lower envs).
+      - TASK_ARN=$(aws ecs list-tasks --cluster "$CLUSTER_NAME" --service-name "$SERVICE" --query 'taskArns[0]' --output text)
+      - ENI_ID=$(aws ecs describe-tasks --cluster "$CLUSTER_NAME" --tasks "$TASK_ARN" --query "tasks[0].attachments[0].details[?name=='networkInterfaceId'].value | [0]" --output text)
+      - PUBLIC_IP=$(aws ec2 describe-network-interfaces --network-interface-ids "$ENI_ID" --query 'NetworkInterfaces[0].Association.PublicIp' --output text)
+      - echo "Validating http://${PUBLIC_IP}/"
+      - |
+        ok=""
+        for i in $(seq 1 12); do
+          if curl -sf --max-time 5 "http://${PUBLIC_IP}/" | grep -q "aws-msp-mb"; then
+            ok=1; break
+          fi
+          sleep 5
+        done
+        if [ -z "$ok" ]; then
+          echo "Validation FAILED for ${ENV_NAME}"; exit 1
+        fi
+        echo "Validation passed for ${ENV_NAME}"
+    finally:
+      # Always scale back to zero — idle lower envs must cost ~$0.
+      - aws ecs update-service --cluster "$CLUSTER_NAME" --service "${ENV_PREFIX}-${ENV_NAME}-${REGION_CODE}-app-svc" --desired-count 0 > /dev/null || true
+      - echo "${ENV_NAME} scaled back to 0"
