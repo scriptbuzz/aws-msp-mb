@@ -1,6 +1,6 @@
 # AWS Account Setup (via Control Tower)
 
-*Last updated: 2026-07-07 11:35*
+*Last updated: 2026-07-07 11:38*
 
 How to stand up the dedicated AWS account this project deploys into, using your
 existing **AWS Control Tower** landing zone, and wire it to the repo. Access is via
@@ -82,6 +82,57 @@ Use this to confirm the deploying identity (and the people around it) can do
 **Not covered by the least-privilege option:** `scripts/demo-user.sh` manages an IAM
 *user* (`cicd-demo`), which is outside the `mb-*` role/policy scope — run it as admin,
 or skip it (it's a demo convenience, not part of the rollout).
+
+### B3. Why these permissions — the rationale
+
+The principle: **the deployer needs exactly the ability to create what the stack
+contains, nothing more.** Terraform has no special access of its own — every resource
+in `infra/` maps to an AWS API family the deploying identity must be allowed to call.
+
+- **S3 (row 1)** — the project *creates its own* state and artifact buckets
+  (bootstrap stage), so it needs bucket-level permissions (create, versioning,
+  public-access-block), not just object read/write. CodePipeline cannot run
+  without an artifact bucket; Terraform cannot track anything without state.
+- **EC2 (row 2)** — no servers are ever launched (it's Fargate), but VPCs, subnets,
+  route tables and security groups live in the **EC2 API namespace**. This is why
+  "EC2 permissions" are required for a stack with zero EC2 instances.
+- **ECR / ECS / ELBv2 (rows 3–5)** — one API family per thing the stack is:
+  a registry to hold images (created empty; *pushing* is done later by the
+  CodeBuild **role**, not the deployer), a cluster + four services to run them,
+  and the prod ALB with **two** target groups — blue/green needs both.
+- **CodePipeline / CodeBuild / CodeDeploy / CodeConnections (row 6)** — the
+  delivery machinery itself: the pipeline, three build projects, the blue/green
+  deployment group, and the GitHub connection object.
+- **CloudWatch (row 7)** — build/task log groups, plus the **5xx alarm that
+  triggers automatic rollback** — it's part of the control, not observability
+  sugar.
+- **SSM (row 8)** — one optional SecureString parameter (GitHub token) so the
+  change-record step can open issues without the token ever touching the repo.
+- **IAM roles/policies (row 9) — the crux.** AWS services cannot act in your
+  account until you *give them an identity*: the stack creates five roles
+  (pipeline orchestration, build, deploy traffic-shifting, task execution
+  [pull image + write logs], task runtime). Creating roles is **privilege
+  escalation surface**, which is exactly why `PowerUserAccess` excludes `iam:*`
+  — and why the add-on restores it **only for `role/mb-*` / `policy/mb-*`**:
+  the deployer can manage this project's identities but cannot touch any other
+  role in the account. Blast-radius containment via the naming convention.
+- **`iam:PassRole` (row 9, least obvious)** — wiring a role *to* a service is
+  "passing" it. Without this being a distinct permission, anyone who can create
+  an ECS service could hand it an **existing high-privilege role** and escalate.
+  The add-on therefore (a) limits passing to `mb-*` roles and (b) adds an
+  `iam:PassedToService` condition so they can only be passed to the four
+  services that legitimately consume them (ECS tasks, CodePipeline, CodeBuild,
+  CodeDeploy) — not to, say, a Lambda the deployer controls.
+- **Service-linked roles (row 10)** — on first use in a brand-new account,
+  ELB and ECS auto-create their internal `AWSServiceRoleFor…` roles.
+  `PowerUserAccess` explicitly allows `iam:CreateServiceLinkedRole`, so this
+  works without the add-on — but it's why a *stricter* custom policy than
+  PowerUser would break on the first ALB.
+
+And the mirror image: the **deny-direct-prod-deploy policy** exists to *remove*
+permissions from humans — prod may only change through the pipeline (build →
+tests → change record → approval). The deployer permissions above are for
+**standing the machine up**; day-to-day releases need none of them.
 
 ---
 
