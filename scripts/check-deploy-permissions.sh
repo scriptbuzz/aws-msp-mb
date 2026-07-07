@@ -52,6 +52,10 @@ probe() { # $1 = label, rest = read-only command
     case "$err" in
       *AccessDenied*|*UnauthorizedOperation*|*"not authorized"*)
         printf '  MISSING  %s\n' "$label"; echo "$label" >> "$MISSFILE" ;;
+      *NotFoundException*|*"does not exist"*)
+        # Permission is evaluated before existence: NotFound (not AccessDenied)
+        # proves the action is allowed — the resource just isn't created yet.
+        printf '  OK       %s (allowed; resource not created yet)\n' "$label" ;;
       *)
         printf '  ERROR    %s — %s\n' "$label" "$(echo "$err" | head -1)"
         echo "$label (indeterminate)" >> "$UNVERFILE" ;;
@@ -62,7 +66,9 @@ probe() { # $1 = label, rest = read-only command
 echo "== service access (read-only probes; each maps to a §B2 row)"
 probe "S3 (buckets: state, artifacts)"        $AWS s3api list-buckets
 probe "EC2/VPC (network module)"              $AWS ec2 describe-vpcs
-probe "ECR (image registry)"                  $AWS ecr describe-repositories
+# Probe the project repo by name: the granular policy scopes ECR to repository/mb-*,
+# so an unscoped describe would false-deny. NotFound (fresh account) counts as OK.
+probe "ECR (image registry)"                  $AWS ecr describe-repositories --repository-names mb-use1-ecr-app
 probe "ECS (cluster + services)"              $AWS ecs list-clusters
 probe "ELBv2 (prod ALB, blue/green)"          $AWS elbv2 describe-load-balancers
 probe "CodePipeline"                          $AWS codepipeline list-pipelines
@@ -90,6 +96,8 @@ else
       PRINCIPAL_ARN=$($AWS iam list-roles \
         --query "Roles[?RoleName=='$ROLE_NAME'].Arn | [0]" --output text 2>/dev/null)
       [ "$PRINCIPAL_ARN" != "None" ] || PRINCIPAL_ARN="" ;;
+    *)
+      UNRECOGNIZED_PRINCIPAL=1 ;;
   esac
 fi
 
@@ -113,6 +121,7 @@ if [ -n "$PRINCIPAL_ARN" ]; then
       iam_unverified "$(echo "$out" | head -1)"; return 1
     fi
     while read -r action decision; do
+      [ -n "$action" ] || continue
       if [ "$decision" = "allowed" ]; then
         printf '  OK       %s\n' "$action"
       else
@@ -122,6 +131,9 @@ if [ -n "$PRINCIPAL_ARN" ]; then
     done <<< "$out"
   }
 
+  # Simulate against the concrete ARNs/conditions the granular policy uses, so a
+  # correctly-scoped policy passes (and an unscoped "*" simulation doesn't lie).
+  SLR_ARN="arn:aws:iam::${ACCOUNT_ID}:role/aws-service-role/ecs.amazonaws.com/AWSServiceRoleForECS"
   sim "$ROLE_ARN" - \
       iam:CreateRole iam:DeleteRole iam:GetRole iam:TagRole \
       iam:PutRolePolicy iam:DeleteRolePolicy iam:AttachRolePolicy \
@@ -131,7 +143,11 @@ if [ -n "$PRINCIPAL_ARN" ]; then
   sim "$ROLE_ARN" \
       "ContextKeyName=iam:PassedToService,ContextKeyValues=codepipeline.amazonaws.com,ContextKeyType=string" \
       iam:PassRole &&
-  sim "*" - iam:CreateServiceLinkedRole || true
+  sim "$SLR_ARN" \
+      "ContextKeyName=iam:AWSServiceName,ContextKeyValues=ecs.amazonaws.com,ContextKeyType=string" \
+      iam:CreateServiceLinkedRole || true
+elif [ -n "${UNRECOGNIZED_PRINCIPAL:-}" ]; then
+  iam_unverified "unrecognized principal type: $CALLER_ARN"
 elif [ -n "${ROLE_NAME:-}" ]; then
   iam_unverified "iam:ListRoles denied — cannot resolve the SSO role ARN"
 fi
