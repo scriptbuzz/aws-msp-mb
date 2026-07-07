@@ -1,6 +1,6 @@
 # AWS Account Setup (via Control Tower)
 
-*Last updated: 2026-07-06 12:05*
+*Last updated: 2026-07-07 11:35*
 
 How to stand up the dedicated AWS account this project deploys into, using your
 existing **AWS Control Tower** landing zone, and wire it to the repo. Access is via
@@ -50,6 +50,38 @@ and the MSP security narrative).
 
 > Full rationale + the exact IAM gaps are in [MANUAL_OPERATIONS.md](MANUAL_OPERATIONS.md)
 > and the "deploy permissions" note in [../infra/README.md](../infra/README.md).
+
+### B2. Permissions checklist — everything a redeploy needs
+
+Use this to confirm the deploying identity (and the people around it) can do
+**all** of the following before starting the rollout in a new account.
+
+**In the deploy account (the principal running `scripts/rollout.sh` / Terraform):**
+
+| # | Capability | Used by | Covered by |
+|---|---|---|---|
+| 1 | S3 — create/manage buckets, read/write objects | bootstrap (state + artifact buckets), Terraform state | PowerUser or admin |
+| 2 | EC2 — VPC, subnets, IGW, route tables, security groups | shared-network | PowerUser or admin |
+| 3 | ECR — create repo, lifecycle policy | shared-ecr | PowerUser or admin |
+| 4 | ECS — cluster, services, task definitions | shared-cluster, all envs | PowerUser or admin |
+| 5 | ELBv2 — ALB, target groups, listeners | prod | PowerUser or admin |
+| 6 | CodePipeline / CodeBuild / CodeDeploy / CodeConnections | shared-pipeline, prod | PowerUser or admin |
+| 7 | CloudWatch — log groups, 5xx alarm | pipeline, prod | PowerUser or admin |
+| 8 | SSM Parameter Store — read/write one parameter | optional GitHub token for change-record issues | PowerUser or admin |
+| 9 | IAM — create/manage the `mb-*` roles & policies, `iam:PassRole` to ECS/CodePipeline/CodeBuild/CodeDeploy | shared-iam, service wiring | **NOT in PowerUser** → [`deploy-permissions.json`](../infra/deploy-permissions.json) add-on (or admin) |
+| 10 | IAM service-linked roles (ELB/ECS auto-create them on first use in a new account) | first ALB / ECS service | PowerUser (explicitly includes `iam:CreateServiceLinkedRole`) or admin |
+
+**Outside the deploy account (other people/roles needed once):**
+
+| # | Who | For |
+|---|---|---|
+| 11 | **Management-account** Identity Center admin | assign the permission set (step 6) and attach the deny-direct-prod-deploy policy to human permission sets |
+| 12 | **GitHub repo admin** | authorize the CodeConnection (console OAuth) and grant the "AWS Connector for GitHub" app access to the repo |
+| 13 | **AWS Support** access on the new account | lift the new-account CodeBuild concurrency hold if present (pre-flight item 16) |
+
+**Not covered by the least-privilege option:** `scripts/demo-user.sh` manages an IAM
+*user* (`cicd-demo`), which is outside the `mb-*` role/policy scope — run it as admin,
+or skip it (it's a demo convenience, not part of the rollout).
 
 ---
 
