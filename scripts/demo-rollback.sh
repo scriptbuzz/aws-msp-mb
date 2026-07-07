@@ -4,7 +4,7 @@
 # Safe: the bad version never receives traffic; blue keeps serving throughout.
 set -euo pipefail
 
-# Load .env (AWS_PROFILE / AWS_REGION and optional ORG / REGION_CODE overrides).
+# Load .env (AWS_PROFILE / AWS_REGION). The project is pinned to us-east-1.
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 [ -f "$ROOT/.env" ] && { set -a; . "$ROOT/.env"; set +a; }
 AWS="${AWS_BIN:-$HOME/bin/aws}"; command -v aws >/dev/null 2>&1 && AWS=aws
@@ -13,17 +13,11 @@ PROFILE="$AWS_PROFILE"
 REGION="${AWS_REGION:-us-east-1}"
 Q="--profile $PROFILE --region $REGION"
 
-# Resource names follow the project convention <org>-<env>-<region_code>-* .
-ORG="${ORG:-mb}"
-REGION_CODE="${REGION_CODE:-$(echo "$REGION" | sed -E \
-  -e 's/northeast/ne/' -e 's/northwest/nw/' -e 's/southeast/se/' -e 's/southwest/sw/' \
-  -e 's/north/n/' -e 's/south/s/' -e 's/east/e/' -e 's/west/w/' -e 's/central/c/' \
-  | tr -d '-')}"
-CLUSTER="${ORG}-${REGION_CODE}-cluster"
-SVC="${ORG}-prod-${REGION_CODE}-app-svc"
-APP="${ORG}-prod-${REGION_CODE}-cd-app"
-GROUP="${ORG}-prod-${REGION_CODE}-cd-group"
-ALB=$($AWS elbv2 describe-load-balancers --names "${ORG}-prod-${REGION_CODE}-alb" $Q --query 'LoadBalancers[0].DNSName' --output text)
+CLUSTER=mb-use1-cluster
+SVC=mb-prod-use1-app-svc
+APP=mb-prod-use1-cd-app
+GROUP=mb-prod-use1-cd-group
+ALB=$($AWS elbv2 describe-load-balancers --names mb-prod-use1-alb $Q --query 'LoadBalancers[0].DNSName' --output text)
 
 echo "== baseline: $(curl -s -o /tmp/d.html -w 'HTTP %{http_code}' http://$ALB/) serving $(grep -oE '[0-9]+\.[0-9]+\.[0-9]+-[a-f0-9]+' /tmp/d.html | head -1)"
 

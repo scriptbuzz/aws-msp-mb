@@ -26,15 +26,12 @@ TF="${TERRAFORM_BIN:-$HOME/bin/terraform}"; command -v terraform  >/dev/null 2>&
 ACCOUNT_ID="$($AWS sts get-caller-identity --query Account --output text)" ||
   { echo "ERROR: no AWS credentials — run: aws sso login --profile $AWS_PROFILE"; exit 1; }
 
-# Portability knobs — override in .env for a different org prefix / repo / region.
-ORG="${ORG:-mb}"
-REPO_NAME="${REPO_NAME:-aws-msp-mb}"
-# Short region code used in resource names: us-east-1 -> use1, eu-central-1 -> euc1,
-# ap-southeast-2 -> apse2. Override with REGION_CODE if you prefer another shorthand.
-REGION_CODE="${REGION_CODE:-$(echo "$AWS_REGION" | sed -E \
-  -e 's/northeast/ne/' -e 's/northwest/nw/' -e 's/southeast/se/' -e 's/southwest/sw/' \
-  -e 's/north/n/' -e 's/south/s/' -e 's/east/e/' -e 's/west/w/' -e 's/central/c/' \
-  | tr -d '-')}"
+# The project is pinned to us-east-1 (resource names embed the use1 code and
+# bucket creation assumes it). Redeploys target a new ACCOUNT, same region.
+[ "$AWS_REGION" = "us-east-1" ] || { echo "ERROR: this project is pinned to us-east-1 (AWS_REGION=$AWS_REGION)" >&2; exit 1; }
+ORG=mb
+REPO_NAME=aws-msp-mb
+REGION_CODE=use1
 STATE_BUCKET="${ORG}-msp-tfstate-${ACCOUNT_ID}"
 ARTIFACT_BUCKET="${ORG}-msp-artifacts-${ACCOUNT_ID}"
 ENVS_LOWER="dev test stage"
@@ -53,13 +50,7 @@ bucket_exists() { $AWS s3api head-bucket --bucket "$1" >/dev/null 2>&1; }
 
 make_bucket() {
   bucket_exists "$1" && { echo "bucket $1 already exists"; return; }
-  # us-east-1 is the one region where LocationConstraint must be omitted.
-  if [ "$AWS_REGION" = "us-east-1" ]; then
-    $AWS s3api create-bucket --bucket "$1" >/dev/null
-  else
-    $AWS s3api create-bucket --bucket "$1" \
-      --create-bucket-configuration "LocationConstraint=$AWS_REGION" >/dev/null
-  fi
+  $AWS s3api create-bucket --bucket "$1" >/dev/null   # us-east-1: no LocationConstraint
   $AWS s3api put-bucket-versioning --bucket "$1" --versioning-configuration Status=Enabled
   $AWS s3api put-public-access-block --bucket "$1" --public-access-block-configuration \
     BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
@@ -98,18 +89,11 @@ key          = "$REPO_NAME/$1/terraform.tfstate"
 region       = "$AWS_REGION"
 use_lockfile = true
 EOF
-  {
-    printf 'org         = "%s"\n' "$ORG"
-    printf 'region      = "%s"\n' "$AWS_REGION"
-    printf 'region_code = "%s"\n' "$REGION_CODE"
-    printf 'repo_name   = "%s"\n' "$REPO_NAME"
-    if [ "$1" = shared ]; then
-      printf 'artifact_bucket_name = "%s"\n' "$ARTIFACT_BUCKET"
-    else
-      printf 'state_bucket_name = "%s"\n' "$STATE_BUCKET"
-      printf 'shared_state_key  = "%s/shared/terraform.tfstate"\n' "$REPO_NAME"
-    fi
-  } > "$d/terraform.tfvars"
+  if [ "$1" = shared ]; then
+    printf 'artifact_bucket_name = "%s"\n' "$ARTIFACT_BUCKET" > "$d/terraform.tfvars"
+  else
+    printf 'state_bucket_name = "%s"\n' "$STATE_BUCKET" > "$d/terraform.tfvars"
+  fi
   echo "wrote $d/backend.hcl + terraform.tfvars"
 }
 
