@@ -6,8 +6,11 @@
 # How it checks (two methods, on purpose):
 #   1. Regional services (S3/EC2/ECS/ELB/Code*/...) — real read-only probe calls
 #      (list/describe). A probe proves the service is reachable through identity
-#      policies AND org SCPs. With the documented permission model (PowerUser =
-#      allow-all-except-IAM), service read access implies create access too.
+#      policies AND org SCPs. Under the documented permission options the read
+#      and write actions travel together: PowerUser is allow-all-except-IAM, and
+#      the granular infra/deploy-permissions-services.json contains both reads
+#      and writes per service — so a passing probe implies the writes are
+#      attached too (attach that file verbatim; don't hand-pick actions from it).
 #      (The IAM policy simulator is NOT used here: from a member account it
 #      cannot evaluate org SCPs and false-denies every regional service.)
 #   2. IAM (the fine-grained part) — the IAM policy simulator, which is reliable
@@ -141,9 +144,10 @@ unver=0; [ -s "$UNVERFILE" ] && unver=$(wc -l < "$UNVERFILE" | tr -d ' ')
 if [ "$miss" -gt 0 ]; then
   echo "RESULT: $miss permission(s) MISSING — this identity cannot deploy yet."
   echo
-  echo "Fix (docs/AWS_ACCOUNT_SETUP.md §B/§B2/§B3):"
-  echo "  - service-access misses -> attach PowerUserAccess (or broader)"
-  echo "  - IAM misses            -> attach infra/deploy-permissions.json as an inline policy"
+  echo "Fix (docs/AWS_ACCOUNT_SETUP.md §B/§B2/§B3) — no AWS-managed policy required:"
+  echo "  - service-access misses -> attach infra/deploy-permissions-services.json"
+  echo "  - IAM misses            -> attach infra/deploy-permissions.json"
+  echo "  (or, if allowed in your org: PowerUserAccess + deploy-permissions.json)"
   exit 1
 elif [ "$unver" -gt 0 ]; then
   echo "RESULT: no missing permissions detected, but $unver check(s) UNVERIFIED (see above)."

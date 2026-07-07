@@ -1,6 +1,6 @@
 # AWS Account Setup (via Control Tower)
 
-*Last updated: 2026-07-07 11:53*
+*Last updated: 2026-07-07 11:58*
 
 How to stand up the dedicated AWS account this project deploys into, using your
 existing **AWS Control Tower** landing zone, and wire it to the repo. Access is via
@@ -36,16 +36,27 @@ and the MSP security narrative).
 ## B. Grant access — IAM Identity Center (SSO)
 
 5. Open **IAM Identity Center** → **AWS accounts** → select the new `mb-msp` account.
-6. Assign **your user** a permission set for this account. Two options:
-   - **Simplest:** `AWSAdministratorAccess`.
-   - **Least-privilege (recommended):** **`PowerUserAccess` + a small scoped IAM add-on.**
+6. Assign **your user** a permission set for this account. Three options, most to
+   least privileged — pick the least privileged one your org allows:
+   - **Simplest:** `AWSAdministratorAccess` (AWS-managed).
+   - **Middle ground:** **`PowerUserAccess` + a small scoped IAM add-on.**
      PowerUser alone is **not** enough — it excludes `iam:*`, and this stack both
      **creates IAM roles/policies** (the `iam` module) and needs **`iam:PassRole`** to
      wire roles to ECS/CodePipeline/CodeBuild/CodeDeploy. Add an inline policy from
      [`infra/deploy-permissions.json`](../infra/deploy-permissions.json) (scoped to the
-     `mb-*` names) to a custom permission set alongside `PowerUserAccess`. This avoids
-     full admin while granting exactly what the deploy needs. Org/account APIs aren't
-     used by the deploy, so PowerUser's other exclusions don't matter.
+     `mb-*` names) alongside `PowerUserAccess`.
+   - **Fully granular (recommended; no AWS-managed policies assumed):** attach the
+     **two project policies** and nothing else:
+     [`infra/deploy-permissions-services.json`](../infra/deploy-permissions-services.json)
+     (every service action the rollout performs — explicit action list, `mb-*`-scoped
+     resources where the service supports it, region-pinned to `us-east-1`) **plus**
+     [`infra/deploy-permissions.json`](../infra/deploy-permissions.json) (the `mb-*`
+     IAM role/policy management + conditional `iam:PassRole`). Together they grant
+     exactly what `scripts/rollout.sh` + Terraform need — nothing outside the
+     project's naming convention, the region, or the four consuming services.
+     In Identity Center: create a permission set with these as **customer managed
+     policies** (each fits the 6,144-char managed-policy limit); or attach both to
+     an IAM role/user directly.
 7. Copy the **AWS access portal URL** (the Identity Center start URL).
 
 > Full rationale + the exact IAM gaps are in [MANUAL_OPERATIONS.md](MANUAL_OPERATIONS.md)
@@ -69,16 +80,16 @@ Use this to confirm the deploying identity (and the people around it) can do
 
 | # | Capability | Used by | Covered by |
 |---|---|---|---|
-| 1 | S3 — create/manage buckets, read/write objects | bootstrap (state + artifact buckets), Terraform state | PowerUser or admin |
-| 2 | EC2 — VPC, subnets, IGW, route tables, security groups | shared-network | PowerUser or admin |
-| 3 | ECR — create repo, lifecycle policy | shared-ecr | PowerUser or admin |
-| 4 | ECS — cluster, services, task definitions | shared-cluster, all envs | PowerUser or admin |
-| 5 | ELBv2 — ALB, target groups, listeners | prod | PowerUser or admin |
-| 6 | CodePipeline / CodeBuild / CodeDeploy / CodeConnections | shared-pipeline, prod | PowerUser or admin |
-| 7 | CloudWatch — log groups, 5xx alarm | pipeline, prod | PowerUser or admin |
-| 8 | SSM Parameter Store — read/write one parameter | optional GitHub token for change-record issues | PowerUser or admin |
+| 1 | S3 — create/manage buckets, read/write objects | bootstrap (state + artifact buckets), Terraform state | services policy (or PowerUser/admin) |
+| 2 | EC2 — VPC, subnets, IGW, route tables, security groups | shared-network | services policy (or PowerUser/admin) |
+| 3 | ECR — create repo, lifecycle policy | shared-ecr | services policy (or PowerUser/admin) |
+| 4 | ECS — cluster, services, task definitions | shared-cluster, all envs | services policy (or PowerUser/admin) |
+| 5 | ELBv2 — ALB, target groups, listeners | prod | services policy (or PowerUser/admin) |
+| 6 | CodePipeline / CodeBuild / CodeDeploy / CodeConnections | shared-pipeline, prod | services policy (or PowerUser/admin) |
+| 7 | CloudWatch — log groups, 5xx alarm | pipeline, prod | services policy (or PowerUser/admin) |
+| 8 | SSM Parameter Store — read/write one parameter | optional GitHub token for change-record issues | services policy (or PowerUser/admin) |
 | 9 | IAM — create/manage the `mb-*` roles & policies, `iam:PassRole` to ECS/CodePipeline/CodeBuild/CodeDeploy | shared-iam, service wiring | **NOT in PowerUser** → [`deploy-permissions.json`](../infra/deploy-permissions.json) add-on (or admin) |
-| 10 | IAM service-linked roles (ELB/ECS auto-create them on first use in a new account) | first ALB / ECS service | PowerUser (explicitly includes `iam:CreateServiceLinkedRole`) or admin |
+| 10 | IAM service-linked roles (ELB/ECS auto-create them on first use in a new account) | first ALB / ECS service | services policy (`iam:CreateServiceLinkedRole` conditioned to ELB/ECS) — also in PowerUser/admin |
 
 **Outside the deploy account (other people/roles needed once):**
 
@@ -97,6 +108,12 @@ or skip it (it's a demo convenience, not part of the rollout).
 The principle: **the deployer needs exactly the ability to create what the stack
 contains, nothing more.** Terraform has no special access of its own — every resource
 in `infra/` maps to an AWS API family the deploying identity must be allowed to call.
+
+The codified version of this section is the pair of policy files: every action below
+appears explicitly in [`deploy-permissions-services.json`](../infra/deploy-permissions-services.json)
+(service APIs, region-pinned, `mb-*`-scoped where supported) or
+[`deploy-permissions.json`](../infra/deploy-permissions.json) (the IAM subset). No
+AWS-managed policy is required.
 
 - **S3 (row 1)** — the project *creates its own* state and artifact buckets
   (bootstrap stage), so it needs bucket-level permissions (create, versioning,

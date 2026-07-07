@@ -43,9 +43,17 @@ infra/
 
 ## Deploy permissions (least-privilege)
 
-The stack can be deployed with **`PowerUserAccess` + a scoped IAM add-on** instead of
-full admin. PowerUser alone is insufficient — it excludes `iam:*`, and this stack both
-**creates IAM roles/policies** (`modules/iam/`) and needs **`iam:PassRole`** to hand
-those roles to ECS/CodePipeline/CodeBuild/CodeDeploy. Attach
-[`deploy-permissions.json`](deploy-permissions.json) (scoped to the `mb-*` names)
-alongside `PowerUserAccess`. See [../docs/AWS_ACCOUNT_SETUP.md](../docs/AWS_ACCOUNT_SETUP.md) §B.
+**No AWS-managed policy is required.** The fully granular option is to attach the two
+project policy files — nothing else:
+
+- [`deploy-permissions-services.json`](deploy-permissions-services.json) — every
+  service action the rollout performs (explicit action list; `mb-*`-scoped resources
+  where the service supports it; region-pinned to `us-east-1`).
+- [`deploy-permissions.json`](deploy-permissions.json) — the IAM subset: manage the
+  `mb-*` roles/policies + conditional `iam:PassRole` to
+  ECS/CodePipeline/CodeBuild/CodeDeploy.
+
+If AWS-managed policies *are* available, `PowerUserAccess` + `deploy-permissions.json`
+also works (PowerUser alone is insufficient — it excludes `iam:*`). Details, checklist
+and rationale: [../docs/AWS_ACCOUNT_SETUP.md](../docs/AWS_ACCOUNT_SETUP.md) §B/§B2/§B3;
+verify with `scripts/check-deploy-permissions.sh` (read-only).
