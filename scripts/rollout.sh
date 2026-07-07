@@ -26,7 +26,15 @@ TF="${TERRAFORM_BIN:-$HOME/bin/terraform}"; command -v terraform  >/dev/null 2>&
 ACCOUNT_ID="$($AWS sts get-caller-identity --query Account --output text)" ||
   { echo "ERROR: no AWS credentials — run: aws sso login --profile $AWS_PROFILE"; exit 1; }
 
-ORG=mb
+# Portability knobs — override in .env for a different org prefix / repo / region.
+ORG="${ORG:-mb}"
+REPO_NAME="${REPO_NAME:-aws-msp-mb}"
+# Short region code used in resource names: us-east-1 -> use1, eu-central-1 -> euc1,
+# ap-southeast-2 -> apse2. Override with REGION_CODE if you prefer another shorthand.
+REGION_CODE="${REGION_CODE:-$(echo "$AWS_REGION" | sed -E \
+  -e 's/northeast/ne/' -e 's/northwest/nw/' -e 's/southeast/se/' -e 's/southwest/sw/' \
+  -e 's/north/n/' -e 's/south/s/' -e 's/east/e/' -e 's/west/w/' -e 's/central/c/' \
+  | tr -d '-')}"
 STATE_BUCKET="${ORG}-msp-tfstate-${ACCOUNT_ID}"
 ARTIFACT_BUCKET="${ORG}-msp-artifacts-${ACCOUNT_ID}"
 ENVS_LOWER="dev test stage"
@@ -45,7 +53,13 @@ bucket_exists() { $AWS s3api head-bucket --bucket "$1" >/dev/null 2>&1; }
 
 make_bucket() {
   bucket_exists "$1" && { echo "bucket $1 already exists"; return; }
-  $AWS s3api create-bucket --bucket "$1" >/dev/null   # us-east-1: no LocationConstraint
+  # us-east-1 is the one region where LocationConstraint must be omitted.
+  if [ "$AWS_REGION" = "us-east-1" ]; then
+    $AWS s3api create-bucket --bucket "$1" >/dev/null
+  else
+    $AWS s3api create-bucket --bucket "$1" \
+      --create-bucket-configuration "LocationConstraint=$AWS_REGION" >/dev/null
+  fi
   $AWS s3api put-bucket-versioning --bucket "$1" --versioning-configuration Status=Enabled
   $AWS s3api put-public-access-block --bucket "$1" --public-access-block-configuration \
     BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
@@ -80,15 +94,22 @@ write_root_config() { # $1 = root name
   local d; d="$(tf_dir "$1")"
   cat > "$d/backend.hcl" <<EOF
 bucket       = "$STATE_BUCKET"
-key          = "aws-msp-mb/$1/terraform.tfstate"
+key          = "$REPO_NAME/$1/terraform.tfstate"
 region       = "$AWS_REGION"
 use_lockfile = true
 EOF
-  if [ "$1" = shared ]; then
-    printf 'artifact_bucket_name = "%s"\n' "$ARTIFACT_BUCKET" > "$d/terraform.tfvars"
-  else
-    printf 'state_bucket_name = "%s"\n' "$STATE_BUCKET" > "$d/terraform.tfvars"
-  fi
+  {
+    printf 'org         = "%s"\n' "$ORG"
+    printf 'region      = "%s"\n' "$AWS_REGION"
+    printf 'region_code = "%s"\n' "$REGION_CODE"
+    printf 'repo_name   = "%s"\n' "$REPO_NAME"
+    if [ "$1" = shared ]; then
+      printf 'artifact_bucket_name = "%s"\n' "$ARTIFACT_BUCKET"
+    else
+      printf 'state_bucket_name = "%s"\n' "$STATE_BUCKET"
+      printf 'shared_state_key  = "%s/shared/terraform.tfstate"\n' "$REPO_NAME"
+    fi
+  } > "$d/terraform.tfvars"
   echo "wrote $d/backend.hcl + terraform.tfvars"
 }
 
@@ -152,35 +173,35 @@ undo_shared_sub() {
 }
 
 verify_shared_network() {
-  $AWS ec2 describe-vpcs --filters "Name=tag:Name,Values=${ORG}-use1-vpc" \
+  $AWS ec2 describe-vpcs --filters "Name=tag:Name,Values=${ORG}-${REGION_CODE}-vpc" \
     --query 'Vpcs[0].{vpc:VpcId,cidr:CidrBlock,state:State}' --output json
-  $AWS ec2 describe-subnets --filters "Name=tag:Name,Values=${ORG}-use1-public-*" \
+  $AWS ec2 describe-subnets --filters "Name=tag:Name,Values=${ORG}-${REGION_CODE}-public-*" \
     --query 'length(Subnets)' --output text | sed 's/^/public subnets: /'
-  $AWS ec2 describe-security-groups --filters "Name=group-name,Values=${ORG}-use1-alb-sg,${ORG}-use1-task-sg" \
+  $AWS ec2 describe-security-groups --filters "Name=group-name,Values=${ORG}-${REGION_CODE}-alb-sg,${ORG}-${REGION_CODE}-task-sg" \
     --query 'SecurityGroups[].GroupName' --output text | sed 's/^/security groups: /'
 }
 
 verify_shared_ecr() {
-  $AWS ecr describe-repositories --repository-names "${ORG}-use1-ecr-app" \
+  $AWS ecr describe-repositories --repository-names "${ORG}-${REGION_CODE}-ecr-app" \
     --query 'repositories[0].{name:repositoryName,uri:repositoryUri,tagMutability:imageTagMutability,scanOnPush:imageScanningConfiguration.scanOnPush}' --output json
 }
 
 verify_shared_cluster() {
-  $AWS ecs describe-clusters --clusters "${ORG}-use1-cluster" \
+  $AWS ecs describe-clusters --clusters "${ORG}-${REGION_CODE}-cluster" \
     --query 'clusters[0].{name:clusterName,status:status}' --output json
 }
 
 verify_shared_connection() {
   $AWS codestar-connections list-connections --provider-type-filter GitHub \
-    --query "Connections[?ConnectionName=='${ORG}-use1-github'].{name:ConnectionName,status:ConnectionStatus}" --output json
+    --query "Connections[?ConnectionName=='${ORG}-${REGION_CODE}-github'].{name:ConnectionName,status:ConnectionStatus}" --output json
   echo "PENDING is expected until authorized in the console (CodePipeline > Settings > Connections)"
 }
 
 verify_shared_iam() {
   for r in codepipeline-role codebuild-role codedeploy-role task-exec-role task-role; do
-    $AWS iam get-role --role-name "${ORG}-use1-$r" --query 'Role.RoleName' --output text | sed 's/^/OK  role /'
+    $AWS iam get-role --role-name "${ORG}-${REGION_CODE}-$r" --query 'Role.RoleName' --output text | sed 's/^/OK  role /'
   done
-  $AWS iam list-policies --scope Local --query "Policies[?PolicyName=='${ORG}-use1-deny-direct-prod-deploy'].PolicyName" --output text | sed 's/^/OK  policy /'
+  $AWS iam list-policies --scope Local --query "Policies[?PolicyName=='${ORG}-${REGION_CODE}-deny-direct-prod-deploy'].PolicyName" --output text | sed 's/^/OK  policy /'
 }
 
 # --- Stage-6 (prod) substages: targeted applies in the prod root ----------------
@@ -211,15 +232,15 @@ undo_prod_sub() {
 }
 
 verify_prod_alb() {
-  $AWS elbv2 describe-load-balancers --names "${ORG}-prod-use1-alb" \
+  $AWS elbv2 describe-load-balancers --names "${ORG}-prod-${REGION_CODE}-alb" \
     --query 'LoadBalancers[0].{name:LoadBalancerName,dns:DNSName,state:State.Code}' --output json
   $AWS elbv2 describe-target-groups \
-    --names "${ORG}-prod-use1-tg-blue" "${ORG}-prod-use1-tg-green" \
+    --names "${ORG}-prod-${REGION_CODE}-tg-blue" "${ORG}-prod-${REGION_CODE}-tg-green" \
     --query 'TargetGroups[].TargetGroupName' --output text | sed 's/^/target groups: /'
 }
 
 verify_prod_service() {
-  $AWS ecs describe-services --cluster "${ORG}-use1-cluster" --services "${ORG}-prod-use1-app-svc" \
+  $AWS ecs describe-services --cluster "${ORG}-${REGION_CODE}-cluster" --services "${ORG}-prod-${REGION_CODE}-app-svc" \
     --query 'services[0].{status:status,desired:desiredCount,running:runningCount}' --output json
   echo "NOTE: task pulls :bootstrap (absent until first pipeline release) — running may stay 0 and ALB serves 503 until Stage 7. Expected."
 }
@@ -231,14 +252,14 @@ verify_shared() {
   pipeline="$(cd "$(tf_dir shared)" && $TF output -raw pipeline_name)"
   conn="$(cd "$(tf_dir shared)" && $TF output -raw github_connection_status)"
   $AWS codepipeline get-pipeline --name "$pipeline" >/dev/null && echo "OK  pipeline $pipeline exists"
-  $AWS ecr describe-repositories --repository-names "${ORG}-use1-ecr-app" >/dev/null && echo "OK  ECR ${ORG}-use1-ecr-app"
+  $AWS ecr describe-repositories --repository-names "${ORG}-${REGION_CODE}-ecr-app" >/dev/null && echo "OK  ECR ${ORG}-${REGION_CODE}-ecr-app"
   echo "GitHub connection status: $conn"
   [ "$conn" = AVAILABLE ] || echo "ACTION NEEDED: authorize the connection in the console (Developer Tools > Settings > Connections), then re-verify"
 }
 
 verify_env() { # dev/test/stage
-  local svc="${ORG}-$1-use1-app-svc"
-  $AWS ecs describe-services --cluster "${ORG}-use1-cluster" --services "$svc" \
+  local svc="${ORG}-$1-${REGION_CODE}-app-svc"
+  $AWS ecs describe-services --cluster "${ORG}-${REGION_CODE}-cluster" --services "$svc" \
     --query 'services[0].{status:status,desired:desiredCount,running:runningCount}' --output json \
     && echo "OK  $svc (expect status ACTIVE, desired 0 while idle)"
 }
@@ -248,8 +269,8 @@ verify_prod() {
   local dns
   dns="$(cd "$(tf_dir prod)" && $TF output -raw site_url)"
   echo "prod URL: $dns   (503 is EXPECTED until the first pipeline release deploys an image)"
-  $AWS deploy get-deployment-group --application-name "${ORG}-prod-use1-cd-app" \
-      --deployment-group-name "${ORG}-prod-use1-cd-group" \
+  $AWS deploy get-deployment-group --application-name "${ORG}-prod-${REGION_CODE}-cd-app" \
+      --deployment-group-name "${ORG}-prod-${REGION_CODE}-cd-group" \
       --query 'deploymentGroupInfo.deploymentGroupName' --output text \
     && echo "OK  CodeDeploy deployment group"
   curl -s -o /dev/null -w 'ALB HTTP status: %{http_code}\n' --max-time 10 "$dns" || echo "ALB not answering yet (DNS can take a minute)"
@@ -262,7 +283,7 @@ status() {
   bucket_exists "$STATE_BUCKET"    && echo "bootstrap: state bucket present"    || echo "bootstrap: NOT done"
   bucket_exists "$ARTIFACT_BUCKET" && echo "bootstrap: artifact bucket present" || true
   for r in shared $ENVS_LOWER prod; do
-    if $AWS s3api head-object --bucket "$STATE_BUCKET" --key "aws-msp-mb/$r/terraform.tfstate" >/dev/null 2>&1; then
+    if $AWS s3api head-object --bucket "$STATE_BUCKET" --key "$REPO_NAME/$r/terraform.tfstate" >/dev/null 2>&1; then
       echo "$r: state exists (applied)"
     else
       echo "$r: not applied"
@@ -309,7 +330,7 @@ case "$cmd" in
   undo-all)
     say "FULL TEARDOWN (reverse order)"
     for r in prod stage test dev shared; do
-      if $AWS s3api head-object --bucket "$STATE_BUCKET" --key "aws-msp-mb/$r/terraform.tfstate" >/dev/null 2>&1; then
+      if $AWS s3api head-object --bucket "$STATE_BUCKET" --key "$REPO_NAME/$r/terraform.tfstate" >/dev/null 2>&1; then
         undo_root "$r"
       else
         echo "skip $r (no state)"

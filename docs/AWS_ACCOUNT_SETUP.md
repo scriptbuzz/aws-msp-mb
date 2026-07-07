@@ -1,6 +1,6 @@
 # AWS Account Setup (via Control Tower)
 
-*Last updated: 2026-07-05 12:12*
+*Last updated: 2026-07-06 12:05*
 
 How to stand up the dedicated AWS account this project deploys into, using your
 existing **AWS Control Tower** landing zone, and wire it to the repo. Access is via
@@ -93,6 +93,12 @@ That's the only credential needed — and it's a short-lived SSO session, not a 
     guardrails that deny specific services/regions, confirm none block this stack.
 15. **Terraform state:** simplest is to put the state + artifact S3 buckets **in this
     same `mb-msp` account** (Phase 2 of the rollout). `backend.hcl` points at them.
+16. **CodeBuild concurrency hold (new accounts):** freshly created AWS accounts can
+    ship with an enforced limit of **0 concurrent CodeBuild builds** — every build fails
+    with `AccountLimitExceededException: Cannot have more than 0 builds in queue` even
+    though Service Quotas shows a normal value. Only **AWS Support** can lift it (open a
+    support case; quota-increase requests don't apply). Budget for this before the first
+    pipeline run in any new account.
 
 ---
 

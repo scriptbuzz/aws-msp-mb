@@ -4,21 +4,28 @@
 # Safe: the bad version never receives traffic; blue keeps serving throughout.
 set -euo pipefail
 
-# Load .env if present (AWS_PROFILE / AWS_REGION), else fall back to sandbox defaults.
+# Load .env (AWS_PROFILE / AWS_REGION and optional ORG / REGION_CODE overrides).
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 [ -f "$ROOT/.env" ] && { set -a; . "$ROOT/.env"; set +a; }
 AWS="${AWS_BIN:-$HOME/bin/aws}"; command -v aws >/dev/null 2>&1 && AWS=aws
-PROFILE="${AWS_PROFILE:-sandbox01}"
+: "${AWS_PROFILE:?set AWS_PROFILE in .env}"
+PROFILE="$AWS_PROFILE"
 REGION="${AWS_REGION:-us-east-1}"
 Q="--profile $PROFILE --region $REGION"
 
-CLUSTER=mb-use1-cluster
-SVC=mb-prod-use1-app-svc
-APP=mb-prod-use1-cd-app
-GROUP=mb-prod-use1-cd-group
-ALB=$($AWS elbv2 describe-load-balancers --names mb-prod-use1-alb $Q --query 'LoadBalancers[0].DNSName' --output text)
+# Resource names follow the project convention <org>-<env>-<region_code>-* .
+ORG="${ORG:-mb}"
+REGION_CODE="${REGION_CODE:-$(echo "$REGION" | sed -E \
+  -e 's/northeast/ne/' -e 's/northwest/nw/' -e 's/southeast/se/' -e 's/southwest/sw/' \
+  -e 's/north/n/' -e 's/south/s/' -e 's/east/e/' -e 's/west/w/' -e 's/central/c/' \
+  | tr -d '-')}"
+CLUSTER="${ORG}-${REGION_CODE}-cluster"
+SVC="${ORG}-prod-${REGION_CODE}-app-svc"
+APP="${ORG}-prod-${REGION_CODE}-cd-app"
+GROUP="${ORG}-prod-${REGION_CODE}-cd-group"
+ALB=$($AWS elbv2 describe-load-balancers --names "${ORG}-prod-${REGION_CODE}-alb" $Q --query 'LoadBalancers[0].DNSName' --output text)
 
-echo "== baseline: $(curl -s -o /tmp/d.html -w 'HTTP %{http_code}' http://$ALB/) serving $(grep -oE '1\.0\.[0-9]+-[a-f0-9]+' /tmp/d.html | head -1)"
+echo "== baseline: $(curl -s -o /tmp/d.html -w 'HTTP %{http_code}' http://$ALB/) serving $(grep -oE '[0-9]+\.[0-9]+\.[0-9]+-[a-f0-9]+' /tmp/d.html | head -1)"
 
 echo "== registering a BAD task definition (image tag that cannot be pulled)"
 GOOD=$($AWS ecs describe-services --cluster $CLUSTER --services $SVC $Q --query "services[0].taskSets[?status=='PRIMARY']|[0].taskDefinition" --output text)
@@ -42,7 +49,7 @@ echo "   deployment $DID"
 echo "== watching (green will fail to start; site stays up on the good version)"
 for i in $(seq 1 6); do
   sleep 20
-  code=$(curl -s -o /tmp/d.html -w '%{http_code}' http://$ALB/); ver=$(grep -oE '1\.0\.[0-9]+-[a-f0-9]+' /tmp/d.html | head -1)
+  code=$(curl -s -o /tmp/d.html -w '%{http_code}' http://$ALB/); ver=$(grep -oE '[0-9]+\.[0-9]+\.[0-9]+-[a-f0-9]+' /tmp/d.html | head -1)
   echo "   t+$((i*20))s  site: HTTP $code ($ver)  green: $($AWS ecs describe-services --cluster $CLUSTER --services $SVC $Q --query "services[0].taskSets[?status=='ACTIVE']|[0].stabilityStatus" --output text 2>/dev/null)"
 done
 
@@ -57,4 +64,4 @@ done
 echo "== cleanup: deregister the bad task def"
 $AWS ecs deregister-task-definition --task-definition "$BAD" $Q >/dev/null || true
 
-echo "== result: $(curl -s -o /tmp/d.html -w 'HTTP %{http_code}' http://$ALB/) serving $(grep -oE '1\.0\.[0-9]+-[a-f0-9]+' /tmp/d.html | head -1) — production never went down."
+echo "== result: $(curl -s -o /tmp/d.html -w 'HTTP %{http_code}' http://$ALB/) serving $(grep -oE '[0-9]+\.[0-9]+\.[0-9]+-[a-f0-9]+' /tmp/d.html | head -1) — production never went down."
