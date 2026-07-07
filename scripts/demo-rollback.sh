@@ -8,7 +8,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 [ -f "$ROOT/.env" ] && { set -a; . "$ROOT/.env"; set +a; }
 AWS="${AWS_BIN:-$HOME/bin/aws}"; command -v aws >/dev/null 2>&1 && AWS=aws
-: "${AWS_PROFILE:?set AWS_PROFILE in .env}"
+# MANUAL FALLBACK — no .env? Uncomment and edit these instead (they take
+# precedence over anything .env loaded above):
+# AWS_PROFILE=sandbox01
+# AWS_REGION=us-east-1
+: "${AWS_PROFILE:?set AWS_PROFILE in .env (or uncomment the manual fallback above)}"
 PROFILE="$AWS_PROFILE"
 REGION="${AWS_REGION:-us-east-1}"
 Q="--profile $PROFILE --region $REGION"

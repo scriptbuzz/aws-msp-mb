@@ -16,7 +16,11 @@ cd "$REPO_ROOT"
 
 # --- env / tools ---------------------------------------------------------------
 [ -f .env ] && { set -a; . ./.env; set +a; }
-: "${AWS_PROFILE:?set AWS_PROFILE in .env}"
+# MANUAL FALLBACK — no .env? Uncomment and edit these instead (they take
+# precedence over anything .env loaded above):
+# AWS_PROFILE=sandbox01
+# AWS_REGION=us-east-1
+: "${AWS_PROFILE:?set AWS_PROFILE in .env (or uncomment the manual fallback above)}"
 : "${AWS_REGION:=us-east-1}"
 export AWS_PROFILE AWS_REGION AWS_DEFAULT_REGION="$AWS_REGION"
 
