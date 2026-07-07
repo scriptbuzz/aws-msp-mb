@@ -13,11 +13,17 @@ PROFILE="$AWS_PROFILE"
 REGION="${AWS_REGION:-us-east-1}"
 Q="--profile $PROFILE --region $REGION"
 
+# ---------------------------------------------------------------------------------
+# PORTABILITY PARAMETERS — deployed prod resource names (convention
+# <org>-<env>-<region_code>-*). Must match scripts/rollout.sh / Terraform defaults.
+# ---------------------------------------------------------------------------------
 CLUSTER=mb-use1-cluster
 SVC=mb-prod-use1-app-svc
 APP=mb-prod-use1-cd-app
 GROUP=mb-prod-use1-cd-group
-ALB=$($AWS elbv2 describe-load-balancers --names mb-prod-use1-alb $Q --query 'LoadBalancers[0].DNSName' --output text)
+ALB_NAME=mb-prod-use1-alb
+
+ALB=$($AWS elbv2 describe-load-balancers --names "$ALB_NAME" $Q --query 'LoadBalancers[0].DNSName' --output text)
 
 echo "== baseline: $(curl -s -o /tmp/d.html -w 'HTTP %{http_code}' http://$ALB/) serving $(grep -oE '[0-9]+\.[0-9]+\.[0-9]+-[a-f0-9]+' /tmp/d.html | head -1)"
 

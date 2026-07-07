@@ -32,6 +32,18 @@ AWS="${AWS_BIN:-$HOME/bin/aws}"; command -v aws >/dev/null 2>&1 && AWS=aws
 REGION="${AWS_REGION:-us-east-1}"
 export AWS_PROFILE AWS_REGION="$REGION" AWS_DEFAULT_REGION="$REGION"
 
+# ---------------------------------------------------------------------------------
+# PORTABILITY PARAMETERS — the project naming convention (<org>-<region_code>-*).
+# Must match the constants in scripts/rollout.sh and the Terraform variable
+# defaults. The checks below verify permissions against these concrete names,
+# so if the convention ever changes, change it here too.
+# ---------------------------------------------------------------------------------
+ORG=mb                # resource name prefix
+REGION_CODE=use1      # short region code embedded in resource names (us-east-1)
+ECR_REPO_NAME="${ORG}-${REGION_CODE}-ecr-app"                       # probe target
+PIPELINE_ROLE_NAME="${ORG}-${REGION_CODE}-codepipeline-role"        # IAM sim target
+DENY_POLICY_NAME="${ORG}-${REGION_CODE}-deny-direct-prod-deploy"    # IAM sim target
+
 CALLER_ARN=$($AWS sts get-caller-identity --query Arn --output text 2>/dev/null) ||
   { echo "ERROR: no AWS credentials — run: aws sso login --profile $AWS_PROFILE" >&2; exit 1; }
 ACCOUNT_ID=$($AWS sts get-caller-identity --query Account --output text)
@@ -68,7 +80,7 @@ probe "S3 (buckets: state, artifacts)"        $AWS s3api list-buckets
 probe "EC2/VPC (network module)"              $AWS ec2 describe-vpcs
 # Probe the project repo by name: the granular policy scopes ECR to repository/mb-*,
 # so an unscoped describe would false-deny. NotFound (fresh account) counts as OK.
-probe "ECR (image registry)"                  $AWS ecr describe-repositories --repository-names mb-use1-ecr-app
+probe "ECR (image registry)"                  $AWS ecr describe-repositories --repository-names "$ECR_REPO_NAME"
 probe "ECS (cluster + services)"              $AWS ecs list-clusters
 probe "ELBv2 (prod ALB, blue/green)"          $AWS elbv2 describe-load-balancers
 probe "CodePipeline"                          $AWS codepipeline list-pipelines
@@ -108,8 +120,8 @@ iam_unverified() {
 }
 
 if [ -n "$PRINCIPAL_ARN" ]; then
-  ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/mb-use1-codepipeline-role"
-  POLICY_ARN="arn:aws:iam::${ACCOUNT_ID}:policy/mb-use1-deny-direct-prod-deploy"
+  ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/${PIPELINE_ROLE_NAME}"
+  POLICY_ARN="arn:aws:iam::${ACCOUNT_ID}:policy/${DENY_POLICY_NAME}"
 
   sim() { # $1 = resource arn, $2 = extra context ("-" for none), rest = actions
     local resource="$1" ctx="$2"; shift 2

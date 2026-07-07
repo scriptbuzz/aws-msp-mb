@@ -26,12 +26,17 @@ TF="${TERRAFORM_BIN:-$HOME/bin/terraform}"; command -v terraform  >/dev/null 2>&
 ACCOUNT_ID="$($AWS sts get-caller-identity --query Account --output text)" ||
   { echo "ERROR: no AWS credentials — run: aws sso login --profile $AWS_PROFILE"; exit 1; }
 
+# ---------------------------------------------------------------------------------
+# PORTABILITY PARAMETERS — single source for the naming convention this script
+# creates and verifies (<org>-[env-]<region_code>-*, state keys under <repo_name>/).
+# Must match the Terraform variable defaults in infra/environments/*/variables.tf.
 # The project is pinned to us-east-1 (resource names embed the use1 code and
 # bucket creation assumes it). Redeploys target a new ACCOUNT, same region.
+# ---------------------------------------------------------------------------------
 [ "$AWS_REGION" = "us-east-1" ] || { echo "ERROR: this project is pinned to us-east-1 (AWS_REGION=$AWS_REGION)" >&2; exit 1; }
-ORG=mb
-REPO_NAME=aws-msp-mb
-REGION_CODE=use1
+ORG=mb                 # resource name prefix
+REPO_NAME=aws-msp-mb   # tfstate key prefix in the state bucket
+REGION_CODE=use1       # short region code embedded in resource names
 STATE_BUCKET="${ORG}-msp-tfstate-${ACCOUNT_ID}"
 ARTIFACT_BUCKET="${ORG}-msp-artifacts-${ACCOUNT_ID}"
 ENVS_LOWER="dev test stage"
