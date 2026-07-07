@@ -6,7 +6,7 @@
 ![CI/CD](https://img.shields.io/badge/CI%2FCD-CodePipeline%20V2-527FFF?logo=awscodepipeline&logoColor=white)
 ![Deploy](https://img.shields.io/badge/deploy-blue%2Fgreen-2496ED)
 
-*Last updated: 2026-07-06 11:09*
+*Last updated: 2026-07-07 19:19*
 
 Monorepo supporting the provisioning of AWS solutions required to pass the
 **AWS MSP audit**. It is **multi-control**: controls are opt-in (feature-flagged),
@@ -63,7 +63,8 @@ aws-msp-mb/
 
 **Operate**
 - [Rollout runbook](docs/ROLLOUT.md) — stage-by-stage provisioning (`scripts/rollout.sh`)
-- [AWS account setup](docs/AWS_ACCOUNT_SETUP.md) — provision the deploy account via Control Tower + SSO
+- [AWS account setup](docs/AWS_ACCOUNT_SETUP.md) — provision the deploy account via Control Tower + SSO, incl. the deploy-permissions checklist/rationale (§B2/§B3)
+- [Deploy permissions](infra/deploy-permissions-services.json) + [IAM subset](infra/deploy-permissions.json) — the two granular policies (no AWS-managed policy needed); verify with `scripts/check-deploy-permissions.sh` (read-only)
 - [Manual operations](docs/MANUAL_OPERATIONS.md) — the human-required steps and why they can't be automated
 - [Demo script](docs/DEMO.md) — followable end-to-end walkthrough incl. automated rollback
 - [Security / secrets handling](SECURITY.md) — what's never committed + the pre-commit secret scanner (`git config core.hooksPath .githooks`)
