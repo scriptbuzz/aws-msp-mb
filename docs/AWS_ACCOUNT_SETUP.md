@@ -1,6 +1,6 @@
 # AWS Account Setup (via Control Tower)
 
-*Last updated: 2026-07-07 11:38*
+*Last updated: 2026-07-07 11:53*
 
 How to stand up the dedicated AWS account this project deploys into, using your
 existing **AWS Control Tower** landing zone, and wire it to the repo. Access is via
@@ -55,6 +55,15 @@ and the MSP security narrative).
 
 Use this to confirm the deploying identity (and the people around it) can do
 **all** of the following before starting the rollout in a new account.
+
+> **Automated check:** after `aws sso login`, run
+> **[`scripts/check-deploy-permissions.sh`](../scripts/check-deploy-permissions.sh)** —
+> it verifies every in-account row below and prints OK / MISSING per permission.
+> Read-only (probe calls + the IAM policy simulator); it creates and changes
+> nothing. Regional services are verified with real read-only calls rather than
+> the simulator, because from a member account the simulator cannot evaluate org
+> SCPs and would false-deny them. Rows 11–13 (management account, GitHub, AWS
+> Support) are people, not API calls — check those by hand.
 
 **In the deploy account (the principal running `scripts/rollout.sh` / Terraform):**
 

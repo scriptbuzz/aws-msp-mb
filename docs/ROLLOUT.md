@@ -1,6 +1,6 @@
 # Rollout — stage-gated, verifiable, undoable
 
-*Last updated: 2026-07-07 11:35*
+*Last updated: 2026-07-07 11:53*
 
 > **Current position (2026-07-03): all stages applied; first release ran end-to-end
 > to a live prod site.** The pipeline (Stage 7) is operational. See
@@ -15,6 +15,8 @@ explicit approval, verified before moving on, and each has an undo. Driver:
 > checklist** in [AWS_ACCOUNT_SETUP.md §B2](AWS_ACCOUNT_SETUP.md) — it lists every
 > capability the deploying identity needs (and the once-per-account steps that
 > need other people: management-account admin, GitHub repo admin, AWS Support).
+> `scripts/check-deploy-permissions.sh` verifies the in-account rows automatically
+> (read-only).
 
 ```sh
 scripts/rollout.sh status            # where am I?
