@@ -1,0 +1,137 @@
+COMMANDS-OPS06 — copy-paste sheet for the aws-msp-ops06 port
+Last updated: 2026-07-15 17:43
+Placeholders: <TOOLING_PROFILE> <DEMO_PROFILE> <WORK_REPO> <PIPELINE_NAME>
+PowerShell unless noted. Region is always us-east-1.
+
+$env:AWS_PROFILE = "<TOOLING_PROFILE>"   # ALWAYS FIRST — terraform's credentials.
+                                         # NOTE: the profile name may change; use today's.
+
+--------------------------------------------------------------------
+0. START OF DAY
+--------------------------------------------------------------------
+$env:AWS_PROFILE = "<TOOLING_PROFILE>"
+aws sso login --profile <TOOLING_PROFILE>
+aws sts get-caller-identity              # must show the TOOLING account id
+cd <WORK_REPO>
+
+--------------------------------------------------------------------
+1. PRECONDITION — scaffold must be clean (only the 7 protected files)
+--------------------------------------------------------------------
+dir terraform                            # expect exactly: backend.tf providers.tf versions.tf
+                                         #   variables.tf terraform.tfvars locals.tf main.tf
+cd terraform; terraform init; terraform plan; cd ..
+                                         # expect "no changes" and no workload resources.
+                                         # Previous project still deployed? STOP — remove it
+                                         # first (separate push, pure-destroy plan).
+
+--------------------------------------------------------------------
+2. UNZIP (additive)
+--------------------------------------------------------------------
+Expand-Archive -Path ..\aws-msp-ops06-port.zip -DestinationPath . -Force
+
+--------------------------------------------------------------------
+3. SAFETY GATE
+--------------------------------------------------------------------
+git status                               # ONLY new files (10 .tf under terraform\ + 2 docs).
+                                         # Any "modified:" = protected file touched -> STOP.
+
+--------------------------------------------------------------------
+4. PRE-FLIGHT (same gates the pipeline enforces)
+--------------------------------------------------------------------
+cd terraform
+terraform fmt -check -recursive          # no output = pass
+terraform init
+terraform validate                       # "Success!"
+terraform plan                           # optional: expect 52 to add, 0 to change, 0 to destroy
+cd ..
+
+--------------------------------------------------------------------
+5. SHIP
+--------------------------------------------------------------------
+git add -A
+git commit -m "Deploy aws-msp-ops06 release-management stack"
+git push
+
+--------------------------------------------------------------------
+6. WATCH THE PLATFORM PIPELINE (tooling account)
+--------------------------------------------------------------------
+aws codepipeline get-pipeline-state --name <PIPELINE_NAME> --query "stageStates[].{stage:stageName,status:latestExecution.status}"
+# Plan finishes -> review the plan output (52 adds) -> approve in the console.
+# Apply takes ~4-6 min (ALB is the long pole).
+
+--------------------------------------------------------------------
+7. ONE-TIME: AUTHORIZE THE GITHUB CONNECTION (demo account, console)
+--------------------------------------------------------------------
+# Console: demo account -> Developer Tools -> Settings -> Connections
+#   -> aws-msp-ops06-use1-github -> Update pending connection -> GitHub OAuth
+# Check from CLI:
+aws codestar-connections list-connections --profile <DEMO_PROFILE> --region us-east-1 --query "Connections[?ConnectionName=='aws-msp-ops06-use1-github'].ConnectionStatus"
+# expect: AVAILABLE
+
+--------------------------------------------------------------------
+8. FIRST APP RELEASE (demo account) + VERIFY
+--------------------------------------------------------------------
+aws codepipeline start-pipeline-execution --name aws-msp-ops06-use1-pipeline-app --profile <DEMO_PROFILE> --region us-east-1
+aws codepipeline get-pipeline-state --name aws-msp-ops06-use1-pipeline-app --profile <DEMO_PROFILE> --region us-east-1 --query "stageStates[].{stage:stageName,status:latestExecution.status}"
+# At Approve-prod: approve in the demo console (CodePipeline -> pipeline -> Review).
+# End to end ~12-18 min.
+
+$ALB = aws elbv2 describe-load-balancers --names aws-msp-ops06-prod-use1-alb --profile <DEMO_PROFILE> --region us-east-1 --query "LoadBalancers[0].DNSName" --output text
+curl.exe -s -o NUL -w "%{http_code}" http://$ALB/        # expect 200
+start http://$ALB/                                        # page shows version + deploy time
+aws ecs describe-services --cluster aws-msp-ops06-use1-cluster --services aws-msp-ops06-prod-use1-app-svc --profile <DEMO_PROFILE> --region us-east-1 --query "services[0].{desired:desiredCount,running:runningCount}"
+
+--------------------------------------------------------------------
+9. ONGOING DEPLOYS (app releases)
+--------------------------------------------------------------------
+# In the GitHub repo (scriptbuzz/aws-msp-mb): bump app/VERSION, commit to main, push.
+# Push triggers the app pipeline if the GitHub app has repo access; otherwise:
+aws codepipeline start-pipeline-execution --name aws-msp-ops06-use1-pipeline-app --profile <DEMO_PROFILE> --region us-east-1
+# NOTE: every release needs a NEW commit — ECR tags are immutable; re-running
+# the same commit fails the Build stage by design.
+
+--------------------------------------------------------------------
+10. PAUSE / RESUME (the stack's stoppable service)
+--------------------------------------------------------------------
+# Pause (stops the always-on prod task, ~$9/mo; ALB keeps billing while it exists):
+aws ecs update-service --cluster aws-msp-ops06-use1-cluster --service aws-msp-ops06-prod-use1-app-svc --desired-count 0 --profile <DEMO_PROFILE> --region us-east-1
+# Resume:
+aws ecs update-service --cluster aws-msp-ops06-use1-cluster --service aws-msp-ops06-prod-use1-app-svc --desired-count 1 --profile <DEMO_PROFILE> --region us-east-1
+# (dev/test/stage already sit at 0 between releases — nothing to pause.)
+
+--------------------------------------------------------------------
+11. REMOVE THE PROJECT / DESTROY VERIFICATION
+--------------------------------------------------------------------
+# Delete the 10 workload .tf files from terraform\ (and the 2 docs), then:
+git add -A; git commit -m "Remove aws-msp-ops06 stack"; git push
+# Plan shows ONLY destroys (52) -> approve -> apply.
+# Post-destroy tag sweep (<PROJECT_TAG> = 'project' value in terraform\terraform.tfvars):
+aws resourcegroupstaggingapi get-resources --tag-filters Key=Project,Values=<PROJECT_TAG> --profile <DEMO_PROFILE> --region us-east-1 --query "ResourceTagMappingList[].ResourceARN"
+# expect: []
+
+--------------------------------------------------------------------
+12. TROUBLESHOOTING
+--------------------------------------------------------------------
+Expired SSO token ("token has expired"):
+    aws sso login --profile <TOOLING_PROFILE>     (or <DEMO_PROFILE>)
+Plan stage fails on fmt-check:
+    cd terraform; terraform fmt -recursive; cd ..; git add -A; git commit -m "fmt"; git push
+"provider ... no version is selected":
+    terraform init    (locally; pipeline stages run init fresh — just re-run the stage)
+Plan shows changes/destroys instead of pure adds:
+    scaffold not clean — remove the previous project first (separate pure-destroy push)
+AccessDenied during apply:
+    wrong account/profile (deployment role has admin) — aws sts get-caller-identity
+App pipeline Source fails / connection error:
+    connection still PENDING — section 7
+App pipeline Build: AccountLimitExceededException "Cannot have more than 0 builds in queue":
+    new-account CodeBuild hold in the demo account — open an AWS Support case
+    (Service Quotas requests do NOT fix this)
+App pipeline Build: ECR tag already exists:
+    immutable tags — make a new commit (bump app/VERSION) and push
+Prod URL 503:
+    no release deployed yet (bootstrap tag) — run section 8; also check
+    prod service events + /ecs/aws-msp-ops06-prod-use1-app logs
+Push to GitHub didn't trigger the app pipeline:
+    GitHub -> Settings -> Applications -> AWS Connector for GitHub -> grant repo access;
+    until then start executions manually (section 9)
